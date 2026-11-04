@@ -36,7 +36,9 @@ export function checkDraft(d: ProfileDraft): { clean: ProfileDraft; errors: Draf
   d.links.slice(0, LIMITS.links).forEach((raw, i) => {
     if (!raw.trim()) return;
     const url = cleanUrl(raw);
-    if (url) links.push(url);
+    if (url) {
+      if (!links.includes(url)) links.push(url);
+    }
     else errors[`link${i}`] = 'That doesn’t look like a web address. Try something like example.com/you.';
   });
   return {

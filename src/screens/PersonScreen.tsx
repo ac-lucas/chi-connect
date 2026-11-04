@@ -29,7 +29,12 @@ export function PersonScreen({ connection: c, myTags, justConnected, onBack, onR
   }, [confirming]);
 
   async function remove() {
-    await removeConnection(c.id);
+    try {
+      await removeConnection(c.id);
+    } catch {
+      announce('That didn’t work. Try again in a moment.');
+      return;
+    }
     announce(`Removed ${name}.`);
     onRemoved();
   }

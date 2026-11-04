@@ -197,10 +197,14 @@ export async function decodeCode(input: string, now = Date.now()): Promise<Conne
   const company = cleanText(p.c, LIMITS.company);
   if (company) profile.company = company;
   if (Array.isArray(p.l)) {
-    const links = p.l
-      .slice(0, LIMITS.links)
-      .map((l) => (str(l) ? cleanUrl(l) : null))
-      .filter((l): l is string => !!l);
+    const links = [
+      ...new Set(
+        p.l
+          .slice(0, LIMITS.links)
+          .map((l) => (str(l) ? cleanUrl(l) : null))
+          .filter((l): l is string => !!l),
+      ),
+    ];
     if (links.length) profile.links = links;
   }
   if (Array.isArray(p.t)) {

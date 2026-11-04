@@ -58,7 +58,8 @@ export function ConnectScreen({ profile, initialCode, onConnected, onCancel }: P
 
   // Make a fresh code, and replace it shortly before it expires.
   useEffect(() => {
-    let timer: ReturnType<typeof setTimeout>;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let live = true;
     async function make() {
       const payload: ConnectPayload = {
         mode: 'f',
@@ -67,14 +68,21 @@ export function ConnectScreen({ profile, initialCode, onConnected, onCancel }: P
         expiresAt: Date.now() + FACE_TO_FACE_TTL_MS,
         profile: toSharedProfile(profile),
       };
-      setMine(await fitLink(payload, appBase()));
-      timer = setTimeout(() => {
-        // Only refresh if we haven't read theirs yet; otherwise the match word would change under them.
-        if (!theirsRef.current) void make();
+      const next = await fitLink(payload, appBase());
+      if (!live) return;
+      setMine(next);
+      timer = setTimeout(function due() {
+        // Don't refresh while theirs is on screen, or the match word would change under them.
+        // Check again shortly, so "Different word" never leaves an expired code on show.
+        if (theirsRef.current) timer = setTimeout(due, 5_000);
+        else void make();
       }, FACE_TO_FACE_TTL_MS - 30_000);
     }
     void make();
-    return () => clearTimeout(timer);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
   }, [profile]);
 
   async function accept(text: string): Promise<boolean> {
@@ -260,8 +268,9 @@ export function ConnectScreen({ profile, initialCode, onConnected, onCancel }: P
           {view === 'show' ? (
             myCode ?? <p class="muted">Making your code…</p>
           ) : (
+            cryptoOk && (
             <div class="stack">
-              {cryptoOk && <QrScanner onResult={accept} />}
+              <QrScanner onResult={accept} />
               <form
                 class="stack"
                 onSubmit={(e) => {
@@ -279,6 +288,7 @@ export function ConnectScreen({ profile, initialCode, onConnected, onCancel }: P
                 </button>
               </form>
             </div>
+            )
           )}
         </>
       )}

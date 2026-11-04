@@ -107,7 +107,7 @@ describe('decoding untrusted input', () => {
         ...good,
         p: {
           d: 'Sam‮\u0000 Lee',
-          l: ['javascript:alert(1)', 'example.com/sam', 'http://plain.example', 'a.com', 'b.com', 'c.com'],
+          l: ['javascript:alert(1)', 'example.com/sam', 'example.com/sam', 'http://plain.example', 'a.com'],
           t: ['vr', '~Slow tech', 'vr', 7, ...Array.from({ length: 20 }, (_, i) => `~t${i}`)],
         },
       }),

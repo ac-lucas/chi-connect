@@ -69,8 +69,14 @@ export function QrScanner({ onResult }: Props) {
           const found = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
           if (found?.data) {
             busy = true;
-            const done = await latest.current(found.data);
-            busy = false;
+            let done = false;
+            try {
+              done = await latest.current(found.data);
+            } catch {
+              // A failing handler must not stop the scan loop; keep reading frames.
+            } finally {
+              busy = false;
+            }
             if (done) return; // stop scanning; the parent will unmount us
           }
         }

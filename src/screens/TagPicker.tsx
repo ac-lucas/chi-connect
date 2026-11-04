@@ -73,10 +73,15 @@ export function TagPicker({ value, onChange }: Props) {
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault();
-              const first = matches[0];
-              if (canAddTyped && typed) add(typed);
-              else if (first) add(knownTag(first));
-              setQuery('');
+              // Add exactly what was typed: a known topic (or alias) if it matches one, otherwise a custom topic.
+              // Never fall back to the first suggestion, which can be a different topic (or anything, on an empty box).
+              if (!typed) return;
+              if (selected.has(typed.key)) {
+                announce(`${typed.label} is already one of your topics.`);
+              } else if (!full) {
+                add(typed);
+                setQuery('');
+              } else add(typed); // announces the limit and keeps the text
             }
           }}
         />

@@ -14,6 +14,10 @@ describe('checkDraft', () => {
     expect(errors.link1).toBeTruthy();
     expect(errors.link0).toBeUndefined();
   });
+  it('drops duplicate links', () => {
+    const d = { ...emptyDraft(), displayName: 'Ana', links: ['example.com', 'https://example.com/', ''] };
+    expect(checkDraft(d).clean.links).toEqual(['https://example.com/']);
+  });
 });
 
 describe('createProfile and toSharedProfile', () => {
