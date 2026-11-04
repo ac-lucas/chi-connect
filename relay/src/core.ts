@@ -50,21 +50,29 @@ const BUDGETS = {
 type Bucket = keyof typeof BUDGETS;
 const WINDOW_MS = 10 * 60 * 1000;
 
+/** Sweep expired limiter entries above this size; refuse new clients above MAX_TRACKED so memory stays bounded. */
+const SWEEP_AT = 100_000;
+const MAX_TRACKED = 200_000;
+
 /** In-memory fixed-window limiter. Nothing here is persisted. */
 export class RateLimiter {
   private counts = new Map<string, { n: number; start: number }>();
+  private lastSweep = 0;
   hit(clientKey: string, bucket: Bucket, now: number): boolean {
     const key = `${bucket}:${clientKey}`;
     const e = this.counts.get(key);
     if (!e || now - e.start >= WINDOW_MS) {
+      // Sweep at most once a second, so a flood of new clients can't make every request walk the whole map.
+      if (this.counts.size >= SWEEP_AT && now - this.lastSweep >= 1000) this.sweep(now);
+      if (!e && this.counts.size >= MAX_TRACKED) return false; // under a flood: fail closed for new clients
       this.counts.set(key, { n: 1, start: now });
-      if (this.counts.size > 100_000) this.sweep(now);
       return true;
     }
     e.n += 1;
     return e.n <= BUDGETS[bucket];
   }
   private sweep(now: number) {
+    this.lastSweep = now;
     for (const [k, v] of this.counts) if (now - v.start >= WINDOW_MS) this.counts.delete(k);
   }
 }
@@ -76,11 +84,27 @@ function obj(v: unknown): Record<string, unknown> | null {
   return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
 }
 
-async function sha256b64url(s: string): Promise<string> {
-  const h = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)));
+function b64url(bytes: Uint8Array): string {
   let bin = '';
-  for (const b of h) bin += String.fromCharCode(b);
+  for (const b of bytes) bin += String.fromCharCode(b);
   return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+async function sha256(s: string): Promise<Uint8Array> {
+  return new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)));
+}
+
+async function sha256b64url(s: string): Promise<string> {
+  return b64url(await sha256(s));
+}
+
+/**
+ * A mailbox ID is made from its owner's token, so only the token holder can claim it. Mailbox IDs travel
+ * in QR codes and links; without this, anyone who saw one could claim the mailbox first and take its mail.
+ * Must match mailboxIdFor in the app (src/relay/crypto.ts).
+ */
+export async function mailboxIdFor(token: string): Promise<string> {
+  return b64url((await sha256(`pebble-box-v1:${token}`)).slice(0, 16));
 }
 
 function randomId(): string {
@@ -133,16 +157,21 @@ export class RelayCore {
     return fail(404, 'not-found');
   }
 
-  /** Returns true if the token owns the mailbox (claiming it if nobody has). */
+  /**
+   * Returns true if the token owns the mailbox. A mailbox whose ID is made from the token is claimed on
+   * first use. Older mailboxes (random IDs, claimed before IDs were made from tokens) still work for the
+   * token that claimed them, but an unclaimed random ID can no longer be claimed by anyone.
+   */
   private async owns(id: string, token: string, now: number): Promise<boolean> {
     const hash = await sha256b64url(token);
     const row = this.sql.all<{ token_hash: string }>('SELECT token_hash FROM mailboxes WHERE id = ?', id)[0];
-    if (!row) {
-      this.sql.run('INSERT INTO mailboxes (id, token_hash, last_used) VALUES (?, ?, ?)', id, hash, now);
+    if (row) {
+      if (row.token_hash !== hash) return false;
+      this.sql.run('UPDATE mailboxes SET last_used = ? WHERE id = ?', now, id);
       return true;
     }
-    if (row.token_hash !== hash) return false;
-    this.sql.run('UPDATE mailboxes SET last_used = ? WHERE id = ?', now, id);
+    if ((await mailboxIdFor(token)) !== id) return false;
+    this.sql.run('INSERT INTO mailboxes (id, token_hash, last_used) VALUES (?, ?, ?)', id, hash, now);
     return true;
   }
 
@@ -207,10 +236,11 @@ export class RelayCore {
     if (!this.limiter.hit(req.clientKey, 'inbox', now)) return fail(429, 'slow-down');
     const boxes = this.parseBoxes(req.body, LIMITS.boxesPerInbox);
     if (!boxes) return fail(400, 'bad-request');
+    // Check the whole request before deleting anything, so a bad entry can't leave it half applied.
+    if (boxes.some((b) => !Array.isArray(b.messageIds) || b.messageIds.length > LIMITS.idsPerAck)) return fail(400, 'bad-request');
     for (const { id, token, messageIds } of boxes) {
-      if (!Array.isArray(messageIds) || messageIds.length > LIMITS.idsPerAck) return fail(400, 'bad-request');
       if (!(await this.owns(id, token, now))) continue;
-      for (const mid of messageIds) {
+      for (const mid of messageIds as unknown[]) {
         if (typeof mid === 'string' && ID.test(mid)) this.sql.run('DELETE FROM messages WHERE id = ? AND mailbox = ?', mid, id);
       }
     }

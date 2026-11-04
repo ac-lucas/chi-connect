@@ -16,7 +16,7 @@ async function currentIntro(relay: Transport, now = Date.now()): Promise<Intro> 
   const kept = (await getIntros()).filter((i) => i.expiresAt + INTRO_KEEP_MS > now);
   let intro = kept.find((i) => i.expiresAt - now > REUSE_IF_MORE_THAN_MS);
   if (!intro) {
-    intro = newIntro(now);
+    intro = await newIntro(now);
     kept.push(intro);
     // Claim the mailbox now so nobody else can, before any request arrives. Fine if offline: the first sync claims it.
     relay.claim({ id: intro.mailboxId, token: intro.mailboxToken }).catch(() => {});

@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { LIMITS, RelayCore, type RelayResponse, type Sql } from './core';
+import { mailboxIdFor as appMailboxIdFor } from '../../src/relay/crypto';
+import { LIMITS, mailboxIdFor, RateLimiter, RelayCore, type RelayResponse, type Sql } from './core';
 
 function memorySql(): Sql {
   const db = new DatabaseSync(':memory:');
@@ -15,10 +16,17 @@ function memorySql(): Sql {
 const id = (c: string) => c.repeat(22);
 const NOW = 1_800_000_000_000;
 let relay: RelayCore;
+let sql: Sql;
 let client = 0;
+/** A token and the mailbox ID made from it. */
+const owned = async (c: string) => {
+  const token = id(c);
+  return { token, box: await mailboxIdFor(token) };
+};
 
 beforeEach(() => {
-  relay = new RelayCore(memorySql());
+  sql = memorySql();
+  relay = new RelayCore(sql);
   relay.migrate();
   client++;
 });
@@ -29,8 +37,7 @@ const errorOf = (r: RelayResponse) => (r.body as { error?: string }).error;
 
 describe('mailboxes and messages', () => {
   it('delivers a message to the owner, then deletes it on ack', async () => {
-    const box = id('a');
-    const token = id('t');
+    const { box, token } = await owned('t');
     expect((await call('/v1/mailboxes/claim', { id: box, token })).status).toBe(200);
     const sent = await call(`/v1/mailboxes/${box}/messages`, { ct: 'c2VhbGVk', ttl: 3600 });
     expect(sent.status).toBe(201);
@@ -47,7 +54,7 @@ describe('mailboxes and messages', () => {
   });
 
   it('never shows a mailbox to the wrong token, and a second claim fails', async () => {
-    const box = id('b');
+    const { box } = await owned('t');
     await call('/v1/mailboxes/claim', { id: box, token: id('t') });
     expect(errorOf(await call('/v1/mailboxes/claim', { id: box, token: id('x') }))).toBe('taken');
     await call(`/v1/mailboxes/${box}/messages`, { ct: 'abc', ttl: 60 });
@@ -58,8 +65,32 @@ describe('mailboxes and messages', () => {
     expect(Object.keys((real.body as { messages: object }).messages)).toEqual([box]);
   });
 
+  it('makes the app and the relay agree on mailbox IDs', async () => {
+    expect(await appMailboxIdFor(id('t'))).toBe(await mailboxIdFor(id('t')));
+  });
+
+  it('only lets the token a mailbox ID was made from claim it', async () => {
+    // Someone who saw the ID in a QR code can't take the mailbox, by claiming or by reading first.
+    const { box, token } = await owned('t');
+    expect(errorOf(await call('/v1/mailboxes/claim', { id: box, token: id('x') }))).toBe('taken');
+    await call(`/v1/mailboxes/${box}/messages`, { ct: 'abc', ttl: 60 });
+    const peek = await call('/v1/inbox', { boxes: [{ id: box, token: id('x') }] });
+    expect((peek.body as { messages: object }).messages).toEqual({});
+    expect((await call('/v1/mailboxes/claim', { id: box, token })).status).toBe(200);
+    // A random ID that wasn't made from any token can't be claimed at all.
+    expect(errorOf(await call('/v1/mailboxes/claim', { id: id('r'), token }))).toBe('taken');
+  });
+
+  it('keeps working for mailboxes claimed before IDs were made from tokens', async () => {
+    const token = id('t');
+    const hash = Buffer.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token)))).toString('base64url');
+    sql.run('INSERT INTO mailboxes (id, token_hash, last_used) VALUES (?, ?, ?)', id('o'), hash, NOW);
+    expect((await call('/v1/mailboxes/claim', { id: id('o'), token })).status).toBe(200);
+    expect(errorOf(await call('/v1/mailboxes/claim', { id: id('o'), token: id('x') }))).toBe('taken');
+  });
+
   it('claims an unclaimed mailbox on first read', async () => {
-    const box = id('c');
+    const { box } = await owned('t');
     await call(`/v1/mailboxes/${box}/messages`, { ct: 'abc', ttl: 60 });
     const first = await call('/v1/inbox', { boxes: [{ id: box, token: id('t') }] });
     expect(Object.keys((first.body as { messages: object }).messages)).toEqual([box]);
@@ -67,8 +98,7 @@ describe('mailboxes and messages', () => {
   });
 
   it('expires messages after their lifetime', async () => {
-    const box = id('d');
-    const token = id('t');
+    const { box, token } = await owned('t');
     await call(`/v1/mailboxes/${box}/messages`, { ct: 'abc', ttl: 60 });
     const later = await call('/v1/inbox', { boxes: [{ id: box, token }] }, NOW + 61_000);
     expect((later.body as { messages: object }).messages).toEqual({});
@@ -140,12 +170,23 @@ describe('six-digit codes', () => {
 
 describe('purge', () => {
   it('removes expired messages, codes and idle mailboxes', async () => {
-    const box = id('g');
-    await call('/v1/mailboxes/claim', { id: box, token: id('t') });
+    const { box, token } = await owned('t');
+    await call('/v1/mailboxes/claim', { id: box, token });
     await call(`/v1/mailboxes/${box}/messages`, { ct: 'abc', ttl: 60 });
     await call('/v1/codes', { code: '555555', ct: 'abc' });
     relay.purge(NOW + LIMITS.mailboxIdleMs + 1);
-    // An idle mailbox can be claimed fresh by anyone after purge, which shows it was deleted.
-    expect((await call('/v1/mailboxes/claim', { id: box, token: id('x') }, NOW + LIMITS.mailboxIdleMs + 2)).status).toBe(200);
+    const count = (table: string) => sql.all<{ n: number }>(`SELECT COUNT(*) AS n FROM ${table}`)[0]!.n;
+    expect([count('mailboxes'), count('messages'), count('codes')]).toEqual([0, 0, 0]);
+  });
+});
+
+describe('rate limiter', () => {
+  it('stays bounded under a flood of new clients and recovers when the window passes', () => {
+    const limiter = new RateLimiter();
+    let refused = 0;
+    for (let i = 0; i < 210_000; i++) if (!limiter.hit(`ip${i}`, 'any', NOW)) refused++;
+    expect(refused).toBe(10_000);
+    expect(limiter.hit('ip0', 'any', NOW)).toBe(true); // known clients keep their budget
+    expect(limiter.hit('newcomer', 'any', NOW + 10 * 60 * 1000)).toBe(true);
   });
 });

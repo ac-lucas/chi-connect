@@ -13,7 +13,7 @@ import { randomId } from '../model/ids';
 import type { Connection, Intro, SharedProfile } from '../model/types';
 import { decodeCode, encodeCode, type ConnectPayload } from '../connect/payload';
 import { pairSecret } from '../connect/pairing';
-import { codeKey, mailboxKey, open, seal } from './crypto';
+import { codeKey, mailboxIdFor, mailboxKey, open, seal } from './crypto';
 import type { Box, Transport } from './transport';
 
 /** One-way codes last a little under a day, leaving room for phone clocks that disagree. */
@@ -23,12 +23,14 @@ export const INTRO_KEEP_MS = 48 * 60 * 60 * 1000;
 const MESSAGE_TTL_S = 24 * 60 * 60;
 const ID = /^[A-Za-z0-9_-]{22}$/;
 
-export function newBox(): Box {
-  return { id: randomId(), token: randomId() };
+/** A fresh mailbox: a random token, and the ID made from it (see mailboxIdFor). */
+export async function newBox(): Promise<Box> {
+  const token = randomId();
+  return { id: await mailboxIdFor(token), token };
 }
 
-export function newIntro(now = Date.now()): Intro {
-  const box = newBox();
+export async function newIntro(now = Date.now()): Promise<Intro> {
+  const box = await newBox();
   return { nonce: randomId(), mailboxId: box.id, mailboxToken: box.token, createdAt: now, expiresAt: now + INTRO_TTL_MS };
 }
 
@@ -40,7 +42,7 @@ export function introPayload(profile: SharedProfile, intro: Intro): ConnectPaylo
 export async function sendRequest(t: Transport, theirs: ConnectPayload, me: SharedProfile, now = Date.now()): Promise<Connection> {
   if (theirs.mode !== 'r' || !theirs.mailboxId) throw new Error('not-a-request-code');
   const nonce = randomId();
-  const box = newBox();
+  const box = await newBox();
   await t.claim(box);
   const myCode = await encodeCode({ mode: 'r', nonce, mailboxId: box.id, expiresAt: now + INTRO_TTL_MS, profile: me });
   const hello = await seal(await mailboxKey(theirs.nonce, 'hello', theirs.mailboxId), { t: 'hello', v: 1, code: myCode }, theirs.mailboxId);
@@ -61,8 +63,12 @@ export async function sendRequest(t: Transport, theirs: ConnectPayload, me: Shar
   };
 }
 
-/** A: open a hello that arrived in an intro mailbox. Null if it isn't a valid request. */
-export async function openHello(intro: Intro, ct: string, now = Date.now()): Promise<Connection | null> {
+/**
+ * A: open a hello that arrived in an intro mailbox. Null if it isn't a valid request.
+ * `sentAt` is when the relay received it: the sender's code inside is checked against that time, so a request
+ * still waiting on the relay (up to a day) isn't dropped just because the code inside has since expired.
+ */
+export async function openHello(intro: Intro, ct: string, now = Date.now(), sentAt = now): Promise<Connection | null> {
   const msg = (await open(await mailboxKey(intro.nonce, 'hello', intro.mailboxId), ct, intro.mailboxId)) as {
     t?: unknown;
     v?: unknown;
@@ -71,7 +77,7 @@ export async function openHello(intro: Intro, ct: string, now = Date.now()): Pro
   if (!msg || msg.t !== 'hello' || msg.v !== 1 || typeof msg.code !== 'string') return null;
   let theirs: ConnectPayload;
   try {
-    theirs = await decodeCode(msg.code, now);
+    theirs = await decodeCode(msg.code, Math.min(sentAt, now));
   } catch {
     return null;
   }
@@ -94,7 +100,7 @@ export async function openHello(intro: Intro, ct: string, now = Date.now()): Pro
 /** A: approve a request. Sends "accept" to B and returns the connected connection. */
 export async function approveRequest(t: Transport, c: Connection, now = Date.now()): Promise<Connection> {
   if (c.state !== 'pending-received' || !c.mailboxId || !c.sharedSecret) throw new Error('not-pending');
-  const box = newBox();
+  const box = await newBox();
   await t.claim(box);
   const ct = await seal(await mailboxKey(c.sharedSecret, 'msg', c.mailboxId), { t: 'accept', v: 1, mailbox: box.id }, c.mailboxId);
   await t.send(c.mailboxId, ct, MESSAGE_TTL_S);
@@ -104,13 +110,22 @@ export async function approveRequest(t: Transport, c: Connection, now = Date.now
 /** Messages between connected (or pending-sent) pairs, after the hello. */
 export type PairMessage = { t: 'accept'; v: 1; mailbox: string };
 
-export async function openPairMessage(c: Connection, ct: string): Promise<PairMessage | null> {
+/** Decrypt a message to one of our pair mailboxes. Null if it doesn't open (wrong key, tampered or junk). */
+async function openPair(c: Connection, ct: string): Promise<unknown> {
   if (!c.sharedSecret || !c.myMailboxId) return null;
-  const msg = (await open(await mailboxKey(c.sharedSecret, 'msg', c.myMailboxId), ct, c.myMailboxId)) as Record<string, unknown> | null;
+  return open(await mailboxKey(c.sharedSecret, 'msg', c.myMailboxId), ct, c.myMailboxId);
+}
+
+function parsePairMessage(value: unknown): PairMessage | null {
+  const msg = value as Record<string, unknown> | null;
   if (msg && msg.t === 'accept' && msg.v === 1 && typeof msg.mailbox === 'string' && ID.test(msg.mailbox)) {
     return { t: 'accept', v: 1, mailbox: msg.mailbox };
   }
   return null;
+}
+
+export async function openPairMessage(c: Connection, ct: string): Promise<PairMessage | null> {
+  return parsePairMessage(await openPair(c, ct));
 }
 
 export interface SyncStore {
@@ -148,7 +163,7 @@ export async function syncOnce(t: Transport, store: SyncStore, now = Date.now())
   for (const intro of intros) {
     const box = { id: intro.mailboxId, token: intro.mailboxToken };
     for (const m of inbox[intro.mailboxId] ?? []) {
-      const pending = await openHello(intro, m.ct, now);
+      const pending = await openHello(intro, m.ct, now, m.created);
       if (pending && !knownNonces.has(pending.theirNonce)) {
         knownNonces.add(pending.theirNonce);
         await store.put(pending);
@@ -161,7 +176,14 @@ export async function syncOnce(t: Transport, store: SyncStore, now = Date.now())
   for (const c of owned) {
     const box = { id: c.myMailboxId!, token: c.myMailboxToken! };
     for (const m of inbox[c.myMailboxId!] ?? []) {
-      const msg = await openPairMessage(c, m.ct);
+      const opened = await openPair(c, m.ct);
+      if (opened === null) {
+        // Doesn't open with our key: junk, or meant for someone else. Clear it, or it would be downloaded and
+        // tried again on every sync until it expires (mailbox IDs are in QR codes, so anyone can post to one).
+        ackOne(box, m.id);
+        continue;
+      }
+      const msg = parsePairMessage(opened);
       if (msg?.t === 'accept') {
         if (c.state === 'pending-sent') {
           const done: Connection = { ...c, state: 'connected', connectedAt: now, mailboxId: msg.mailbox };
@@ -170,7 +192,7 @@ export async function syncOnce(t: Transport, store: SyncStore, now = Date.now())
         }
         ackOne(box, m.id);
       }
-      // Anything else is left alone: it may be a newer message type, and it expires on its own.
+      // Anything else that opened is left alone: it may be a newer message type, and it expires on its own.
     }
   }
 

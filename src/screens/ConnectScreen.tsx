@@ -67,7 +67,7 @@ export function ConnectScreen({ profile, initialCode, onOneWayCode, onConnected,
     let timer: ReturnType<typeof setTimeout> | undefined;
     let live = true;
     async function make() {
-      const box = newBox();
+      const box = await newBox();
       const payload: ConnectPayload = {
         mode: 'f',
         nonce: randomId(),

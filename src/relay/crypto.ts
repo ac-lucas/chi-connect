@@ -17,6 +17,16 @@ export const MAX_PLAINTEXT_BYTES = 8 * 1024;
 
 export type KeyPurpose = 'hello' | 'msg';
 
+/**
+ * A mailbox ID is made from its secret token (first 128 bits of a SHA-256), so the relay can check that only the
+ * token holder claims it. IDs are shown in QR codes; tokens never leave the phone except to the relay.
+ * Must match mailboxIdFor in relay/src/core.ts.
+ */
+export async function mailboxIdFor(token: string): Promise<string> {
+  const h = new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(`pebble-box-v1:${token}`)));
+  return toBase64Url(h.slice(0, 16));
+}
+
 async function hkdfKey(secret: Uint8Array, info: string): Promise<CryptoKey> {
   const base = await crypto.subtle.importKey('raw', secret as BufferSource, 'HKDF', false, ['deriveKey']);
   return crypto.subtle.deriveKey(

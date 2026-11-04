@@ -1,3 +1,5 @@
+import { mailboxIdFor } from './crypto';
+
 // How the app talks to the relay. Two implementations behind one interface:
 //  - RelayTransport: the real relay over HTTPS.
 //  - SimulatedTransport: in memory, for tests and for clearly labelled simulations.
@@ -111,13 +113,16 @@ export class SimulatedTransport implements Transport {
   private seq = 0;
   constructor(private now: () => number = Date.now) {}
 
-  private owns({ id, token }: Box): boolean {
+  /** Same rule as the relay: a mailbox belongs to the token its ID was made from. */
+  private async owns({ id, token }: Box): Promise<boolean> {
     const owner = this.owners.get(id);
-    if (owner === undefined) this.owners.set(id, token);
-    return owner === undefined || owner === token;
+    if (owner !== undefined) return owner === token;
+    if ((await mailboxIdFor(token)) !== id) return false;
+    this.owners.set(id, token);
+    return true;
   }
   async claim(box: Box) {
-    if (!this.owns(box)) throw new RelayError('taken');
+    if (!(await this.owns(box))) throw new RelayError('taken');
   }
   async send(mailboxId: string, ct: string, ttl: number) {
     const list = this.messages.get(mailboxId) ?? [];
@@ -127,7 +132,7 @@ export class SimulatedTransport implements Transport {
   async inbox(boxes: Box[]) {
     const out: Record<string, InboxMessage[]> = {};
     for (const b of boxes) {
-      if (!this.owns(b)) continue;
+      if (!(await this.owns(b))) continue;
       const live = (this.messages.get(b.id) ?? []).filter((m) => m.expires > this.now());
       if (live.length) out[b.id] = live.map(({ id, ct, created }) => ({ id, ct, created }));
     }
@@ -135,7 +140,7 @@ export class SimulatedTransport implements Transport {
   }
   async ack(acks: (Box & { messageIds: string[] })[]) {
     for (const a of acks) {
-      if (!this.owns(a)) continue;
+      if (!(await this.owns(a))) continue;
       this.messages.set(a.id, (this.messages.get(a.id) ?? []).filter((m) => !a.messageIds.includes(m.id)));
     }
   }
