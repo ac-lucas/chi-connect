@@ -1,6 +1,8 @@
 // On-device storage (IndexedDB via idb). Nothing in here is sent anywhere.
 import { deleteDB, openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import { importPrivateJwk } from '../connect/pairing';
+// Bundled, not loaded on demand: a separately loaded file can go missing right after an update.
+import { DEMO_CONNECTIONS, DEMO_NOTES } from '../data/demo';
 import type { CatchUpItem, Connection, EnergySetting, FollowUp, Intro, Invite, Note, Profile, ScheduleItem } from '../model/types';
 
 /** Typed key/value settings. Add new keys here. */
@@ -168,7 +170,6 @@ export async function saveIntros(intros: Intro[]): Promise<void> {
 /** Add the demo connections once. Removing them later is respected: they are not re-added. */
 export async function seedDemoOnce(now = Date.now()): Promise<void> {
   if (await getSetting('demoSeeded')) return;
-  const { DEMO_CONNECTIONS, DEMO_NOTES } = await import('../data/demo');
   const tx = (await db()).transaction(['connections', 'notes', 'settings'], 'readwrite');
   for (const c of DEMO_CONNECTIONS) await tx.objectStore('connections').put({ ...c, connectedAt: now });
   for (const n of DEMO_NOTES) await tx.objectStore('notes').put({ ...n, createdAt: now });

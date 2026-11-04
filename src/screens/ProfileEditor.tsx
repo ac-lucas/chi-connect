@@ -25,6 +25,7 @@ export function ProfileEditor({ initial, mode, onSave, onCancel }: Props) {
   const [draft, setDraft] = useState<ProfileDraft>(initial);
   const [errors, setErrors] = useState<DraftErrors>({});
   const [saving, setSaving] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
   const form = useRef<HTMLFormElement>(null);
   const heading = useScreenHeading<HTMLHeadingElement>();
 
@@ -49,10 +50,12 @@ export function ProfileEditor({ initial, mode, onSave, onCancel }: Props) {
       return;
     }
     setSaving(true);
+    setSaveFailed(false);
     try {
       await onSave(clean);
     } catch {
-      announce('That didn’t save. Try again in a moment.');
+      setSaveFailed(true);
+      announce('That didn’t save. Try again, or reload the page.');
     } finally {
       setSaving(false);
     }
@@ -166,6 +169,21 @@ export function ProfileEditor({ initial, mode, onSave, onCancel }: Props) {
         <h3 id="preview-heading">What people see when you connect</h3>
         <ProfileCard profile={preview} />
       </section>
+
+      {saveFailed && (
+        <div class="card stack" role="alert">
+          <p class="error">That didn’t save.</p>
+          <p>
+            Try again. If it keeps happening, reload the page: this browser may be blocking storage (private browsing
+            can do that).
+          </p>
+          <div class="actions">
+            <button type="button" class="button secondary" onClick={() => location.reload()}>
+              Reload
+            </button>
+          </div>
+        </div>
+      )}
 
       <div class="actions">
         <button type="submit" class="button" disabled={saving}>

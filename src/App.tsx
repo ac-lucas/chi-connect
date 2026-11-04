@@ -104,7 +104,7 @@ export function App() {
     getProfile()
       .then(async (p) => {
         if (p) {
-          await seedDemoOnce();
+          await seedDemoOnce().catch(() => {});
           await refreshConnections();
         }
         setProfile(p);
@@ -156,10 +156,15 @@ export function App() {
 
   async function handleCreate(d: ProfileDraft) {
     const p = createProfile(d);
-    await saveProfile(p);
+    await saveProfile(p); // the only step that has to work
     void requestPersistentStorage();
-    await seedDemoOnce();
-    await refreshConnections();
+    // Demo people are a nice-to-have: never let them stop someone getting in.
+    try {
+      await seedDemoOnce();
+      await refreshConnections();
+    } catch {
+      // Try again on the next open.
+    }
     setProfile(p);
     setTab('today');
     announce(`You’re set up, ${p.displayName}.`);
