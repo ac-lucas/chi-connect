@@ -5,7 +5,7 @@ import { dayLabel, programmeDays, startOfDay, timeRange, timeRangeSpoken } from 
 import type { Programme } from '../programme/types';
 import { planDay, type Busy, type HeadsUp, type PlannedBreak } from '../schedule/breaks';
 import { ENERGY, ENERGY_ORDER, energyToday } from '../schedule/energy';
-import { deleteInvite, deleteScheduleItem, getSetting, listAllSchedule, listConnections, listInvites, putScheduleItem, setSetting, skipBreak } from '../storage/db';
+import { deleteInvite, deleteScheduleItem, dismiss, getSetting, listAllSchedule, listConnections, listInvites, putScheduleItem, setSetting, skipBreak } from '../storage/db';
 import { cancelInvite, inviteTitle, KIND_INFO, pendingIncoming } from '../schedule/invites';
 import type { Transport } from '../relay/transport';
 import { MeetupShapeView, ShapeBadge } from './ShapeCard';
@@ -70,6 +70,7 @@ export function TodayScreen({ name, programme, relay, myTopics, syncTick, onAddS
   const [incoming, setIncoming] = useState<Invite[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [shapeFor, setShapeFor] = useState<{ id: string; context: string } | null>(null);
+  const [hiddenPrompts, setHiddenPrompts] = useState<string[]>([]);
 
   const refresh = async () => {
     setItems(await listAllSchedule());
@@ -78,6 +79,7 @@ export function TodayScreen({ name, programme, relay, myTopics, syncTick, onAddS
     setIncoming(await pendingIncoming());
     setInvites(await listInvites());
     setConnections(await listConnections());
+    setHiddenPrompts(((await getSetting('dismissed')) ?? []).filter((k) => k.startsWith('shapeprompt:')));
   };
   // Reload when the programme changes (for example the real feed replacing the sample).
   useEffect(() => {
@@ -118,7 +120,12 @@ export function TodayScreen({ name, programme, relay, myTopics, syncTick, onAddS
     day === today
       ? rows.find(
           (r): r is Extract<Row, { kind: 'invite' }> =>
-            r.kind === 'invite' && !!r.invite && (!r.invite.outgoing || r.invite.acceptedIds.length > 0) && r.item.start - 10 * 60_000 <= now && r.item.end > now,
+            r.kind === 'invite' &&
+            !!r.invite &&
+            (!r.invite.outgoing || r.invite.acceptedIds.length > 0) &&
+            r.item.start - 10 * 60_000 <= now &&
+            r.item.end > now &&
+            !hiddenPrompts.includes(`shapeprompt:${r.invite.id}`),
         )
       : undefined;
 
@@ -245,6 +252,25 @@ export function TodayScreen({ name, programme, relay, myTopics, syncTick, onAddS
           <button type="button" class="button big" onClick={() => setShapeFor({ id: meetupNow.invite!.id, context: meetupContext(meetupNow.item, meetupNow.invite!) })}>
             Display your shape to find each other
           </button>
+          <div class="actions">
+            <button
+              type="button"
+              class="button quiet"
+              onClick={async () => {
+                const title = meetupNow.item.title;
+                await dismiss(`shapeprompt:${meetupNow.invite!.id}`);
+                await refresh();
+                announce('Hidden. Your shape is still on the meetup in your day.');
+                // The card is gone: keep keyboard focus near, on that meetup's own button.
+                setTimeout(() => {
+                  const btns = [...document.querySelectorAll<HTMLElement>('.day-row.is-social [aria-label^="Show your shape"]')];
+                  (btns.find((el) => el.getAttribute('aria-label') === `Show your shape for ${title}`) ?? btns[0])?.focus();
+                }, 0);
+              }}
+            >
+              Hide
+            </button>
+          </div>
         </section>
       )}
 

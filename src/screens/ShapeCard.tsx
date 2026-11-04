@@ -48,6 +48,7 @@ export function ShapeBadge({ seedKey, card: given }: { seedKey?: string; card?: 
  */
 export function ShapeCardView({ card, context, onClose }: { card: ShapeCard; context?: string; onClose: () => void }) {
   const done = useRef<HTMLButtonElement>(null);
+  const close = useRef<HTMLButtonElement>(null);
   const [opener] = useState(() => document.activeElement as HTMLElement | null);
 
   useEffect(() => {
@@ -55,8 +56,9 @@ export function ShapeCardView({ card, context, onClose }: { card: ShapeCard; con
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
       if (e.key === 'Tab') {
-        e.preventDefault(); // only one control in here
-        done.current?.focus();
+        // Keep focus inside: it moves between the corner close button and Done.
+        e.preventDefault();
+        (document.activeElement === done.current ? close.current : done.current)?.focus();
       }
     };
     document.addEventListener('keydown', onKey);
@@ -87,6 +89,9 @@ export function ShapeCardView({ card, context, onClose }: { card: ShapeCard; con
   const { bg, fg } = card.colour;
   return (
     <div class="findme" role="dialog" aria-modal="true" aria-labelledby="findme-word" aria-describedby="findme-lead" style={{ background: bg, color: fg }}>
+      <button type="button" ref={close} class="findme-close" aria-label="Close" style={{ color: fg, borderColor: fg }} onClick={onClose}>
+        <span aria-hidden="true">✕</span>
+      </button>
       <p id="findme-lead" class="findme-lead">
         Hold this up. Look for the same shape.
       </p>
