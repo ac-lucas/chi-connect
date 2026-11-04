@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { hasWebCrypto, matchWord, newPairKey, pairSecret, type MatchWord, type PairKey } from '../connect/pairing';
+import { hasWebCrypto, matchSeed, newPairKey, pairSecret, type PairKey } from '../connect/pairing';
+import { cardFromSeed, type ShapeCard } from '../schedule/findme';
+import { ShapeCardView, ShapeGraphic } from './ShapeCard';
 import { decodeCode, DecodeError, FACE_TO_FACE_TTL_MS, fitLink, type ConnectPayload, type DecodeProblem } from '../connect/payload';
 import { QrCode } from '../connect/QrCode';
 import { QrScanner } from '../connect/QrScanner';
@@ -54,7 +56,8 @@ export function ConnectScreen({ profile, initialCode, onOneWayCode, onConnected,
   const [mine, setMine] = useState<Mine | null>(null);
   const [view, setView] = useState<'show' | 'scan'>('show');
   const [theirs, setTheirs] = useState<ConnectPayload | null>(null);
-  const [match, setMatch] = useState<MatchWord | null>(null);
+  const [match, setMatch] = useState<ShapeCard | null>(null);
+  const [showShape, setShowShape] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [pasted, setPasted] = useState('');
   const [copied, setCopied] = useState(false);
@@ -94,7 +97,7 @@ export function ConnectScreen({ profile, initialCode, onOneWayCode, onConnected,
       if (!live) return;
       setMine({ ...next, box, key });
       timer = setTimeout(function due() {
-        // Don't refresh while theirs is on screen, or the match word would change under them.
+        // Don't refresh while theirs is on screen, or the shape would change under them.
         // Check again shortly, so "Different word" never leaves an expired code on show.
         if (theirsRef.current) timer = setTimeout(due, 5_000);
         else void make();
@@ -121,7 +124,7 @@ export function ConnectScreen({ profile, initialCode, onOneWayCode, onConnected,
       lastBad.current = null;
       setProblem(null);
       setTheirs(p);
-      setMatch(await matchWord(mine.payload, p));
+      setMatch(await cardFromSeed(matchSeed(mine.payload, p)));
       announce(`Got ${p.profile.displayName}’s code.`);
       setTimeout(() => resultHeading.current?.focus(), 0);
       return true;
@@ -227,7 +230,7 @@ export function ConnectScreen({ profile, initialCode, onOneWayCode, onConnected,
         </h2>
         {!theirs && (
           <p>
-            You scan theirs, they scan yours. Order doesn’t matter. Then check both screens show the same word.
+            You scan theirs, they scan yours. Order doesn’t matter. Then you both hold up your shape: same shape, you’re connected.
           </p>
         )}
       </div>
@@ -249,25 +252,30 @@ export function ConnectScreen({ profile, initialCode, onOneWayCode, onConnected,
           </section>
 
           <section class="card stack match" aria-labelledby="match-heading">
-            <h3 id="match-heading">Your match word</h3>
-            <p class="match-word">
-              <span class="match-glyph" aria-hidden="true">
-                {match.glyph}
-              </span>{' '}
-              {match.text}
-            </p>
+            <h3 id="match-heading">Your shape</h3>
+            <div class="match-card" style={{ background: match.colour.bg, color: match.colour.fg }}>
+              <ShapeGraphic card={match} size="5rem" idSuffix="match" />
+              <p class="match-word">{match.word}</p>
+              <p class="match-pattern">{match.pattern}</p>
+            </div>
             <p>
-              Once they’ve scanned your code too, their screen shows the same word. Same word on both? You’re connected.
+              Once they’ve scanned your code too, their screen shows the same shape. Hold them side by side: same shape? You’re connected.
             </p>
             <div class="actions">
+              <button type="button" class="button secondary" onClick={() => setShowShape(true)}>
+                Show it full screen
+              </button>
+            </div>
+            <div class="actions">
               <button type="button" class="button" onClick={connect} disabled={saving}>
-                {saving ? 'Connecting…' : 'Same word. Connect'}
+                {saving ? 'Connecting…' : 'Same shape. Connect'}
               </button>
               <button type="button" class="button secondary" onClick={startOver}>
-                Different word
+                Different shape
               </button>
             </div>
           </section>
+          {showShape && <ShapeCardView card={match} context={`Connecting with ${theirs.profile.displayName}`} onClose={() => setShowShape(false)} />}
 
           <section class="stack" aria-labelledby="still-show">
             <h3 id="still-show">Haven’t been scanned yet?</h3>

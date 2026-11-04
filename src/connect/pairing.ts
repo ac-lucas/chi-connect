@@ -94,6 +94,11 @@ async function deriveSecret(myPrivate: CryptoKey, theirPublic: string, label: st
   return toBase64Url(new Uint8Array(bits));
 }
 
+/** Seed for the shared shape both phones show when connecting face to face (public parts only, so both can make it). */
+export function matchSeed(mine: PairSide, theirs: PairSide): string {
+  return `pebble-match-v2:${sorted(mine, theirs)}`;
+}
+
 export async function matchWord(mine: PairSide, theirs: PairSide): Promise<MatchWord> {
   const h = await sha256(`pebble-match-v2:${sorted(mine, theirs)}`);
   const colour = MATCH_COLOURS[h[0]! % MATCH_COLOURS.length]!;

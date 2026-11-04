@@ -6,6 +6,7 @@ import { acceptInvite, declineInvite, KIND_INFO, simulateIncoming } from '../sch
 import type { Transport } from '../relay/transport';
 import type { PlannedBreak } from '../schedule/breaks';
 import { announce } from '../ui/announce';
+import { ShapeBadge } from './ShapeCard';
 
 interface Props {
   invites: Invite[];
@@ -96,6 +97,9 @@ export function InvitesPanel({ invites, connections, items, relay, heldUntil, ne
             {i.place && i.kind !== 'meal' && <p>Where: {i.place}</p>}
             {spot && <p>Spot: {spot}</p>}
             {i.note && <p class="invite-note">“{i.note}”</p>}
+            <p class="shape-line">
+              Say yes and you’ll both get <ShapeBadge seedKey={i.id} /> to hold up and find each other.
+            </p>
             {clash && <p class="hint">Heads-up: overlaps {clash.title}.</p>}
             <div class="actions">
               <button type="button" class="button" disabled={busy === i.id} onClick={() => void yes(i)}>

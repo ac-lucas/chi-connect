@@ -188,7 +188,10 @@ export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
         <input id="invite-note" type="text" maxLength={LIMITS_INVITE.note} value={note} onInput={(e) => setNote(e.currentTarget.value)} />
       </div>
 
-      <p class="hint">They see this and can say yes. If they don’t, you won’t be told, and that’s fine.</p>
+      <p class="hint">
+        Everyone who says yes gets the same shape to hold up, so you can spot each other in a crowd. They see this and can say yes.
+        If they don’t, you won’t be told, and that’s fine.
+      </p>
 
       {confirmAll && (
         <p class="card" role="alert">

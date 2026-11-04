@@ -8,7 +8,8 @@ import { ENERGY, ENERGY_ORDER, energyToday } from '../schedule/energy';
 import { deleteInvite, deleteScheduleItem, getSetting, listAllSchedule, listConnections, listInvites, putScheduleItem, setSetting, skipBreak } from '../storage/db';
 import { cancelInvite, inviteTitle, KIND_INFO, pendingIncoming } from '../schedule/invites';
 import type { Transport } from '../relay/transport';
-import { FindMeCardView } from './FindMeCardView';
+import { MeetupShapeView, ShapeBadge } from './ShapeCard';
+import { describeSpot } from '../schedule/spot';
 import { alsoGoing, namesList } from '../schedule/overlap';
 import type { InviteDraft } from './InviteScreen';
 import { InvitesPanel } from './InvitesPanel';
@@ -68,7 +69,7 @@ export function TodayScreen({ name, programme, relay, myTopics, syncTick, onAddS
   const [invites, setInvites] = useState<Invite[]>([]);
   const [incoming, setIncoming] = useState<Invite[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
-  const [findMe, setFindMe] = useState<string | null>(null);
+  const [shapeFor, setShapeFor] = useState<{ id: string; context: string } | null>(null);
 
   const refresh = async () => {
     setItems(await listAllSchedule());
@@ -111,6 +112,15 @@ export function TodayScreen({ name, programme, relay, myTopics, syncTick, onAddS
   const holding = items.find((i) => i.start <= now && i.end > now && (i.type === 'protected' || (i.type === 'session' && i.focus)));
   const nameOf = (id: string) => connections.find((c) => c.id === id)?.profile.displayName ?? 'someone';
   const nextBreak = day === today ? (plan.breaks.find((b) => b.start > now) ?? null) : null;
+
+  // From 10 minutes before a confirmed meetup until it ends: put "Display your shape" front and centre.
+  const meetupNow =
+    day === today
+      ? rows.find(
+          (r): r is Extract<Row, { kind: 'invite' }> =>
+            r.kind === 'invite' && !!r.invite && (!r.invite.outgoing || r.invite.acceptedIds.length > 0) && r.item.start - 10 * 60_000 <= now && r.item.end > now,
+        )
+      : undefined;
 
   function inviteFromBreak(b: PlannedBreak) {
     onInvite({ kinds: b.kind === 'meal' ? ['meal', 'break-together'] : ['break-together', 'meal'], start: b.start, end: b.end });
@@ -223,6 +233,21 @@ export function TodayScreen({ name, programme, relay, myTopics, syncTick, onAddS
         </div>
       )}
 
+      {meetupNow && meetupNow.invite && (
+        <section class="card stack shape-now" aria-labelledby="shape-now-heading">
+          <h3 id="shape-now-heading">
+            {meetupNow.item.start > now ? `Starting at ${clock(meetupNow.item.start)}` : 'On now'}: {meetupNow.invite ? inviteTitle(meetupNow.invite, meetupNow.invite.acceptedIds.map(nameOf)) : meetupNow.item.title}
+          </h3>
+          <p>{meetupContext(meetupNow.item, meetupNow.invite)}</p>
+          <p class="shape-line">
+            You’re all looking for <ShapeBadge seedKey={meetupNow.invite.id} />
+          </p>
+          <button type="button" class="button big" onClick={() => setShapeFor({ id: meetupNow.invite!.id, context: meetupContext(meetupNow.item, meetupNow.invite!) })}>
+            Display your shape to find each other
+          </button>
+        </section>
+      )}
+
       <InvitesPanel
         invites={incoming}
         connections={connections}
@@ -282,6 +307,11 @@ export function TodayScreen({ name, programme, relay, myTopics, syncTick, onAddS
                     </p>
                   )}
                   {r.kind === 'invite' && r.item.place && <p class="muted">{r.item.place}</p>}
+                  {r.kind === 'invite' && r.invite && (!r.invite.outgoing || r.invite.acceptedIds.length > 0) && (
+                    <p class="shape-line">
+                      Find each other by <ShapeBadge seedKey={r.invite.id} />
+                    </p>
+                  )}
                   {r.kind === 'session' && r.item.place && <p class="muted">{r.item.place}</p>}
                   {r.kind === 'session' &&
                     (() => {
@@ -334,8 +364,8 @@ export function TodayScreen({ name, programme, relay, myTopics, syncTick, onAddS
                   {r.kind === 'invite' && (
                     <>
                       {r.invite && (!r.invite.outgoing || r.invite.acceptedIds.length > 0) && (
-                        <button type="button" class="button quiet" aria-label={`Find-me card for ${r.item.title}`} onClick={() => setFindMe(r.invite!.id)}>
-                          Find-me card
+                        <button type="button" class="button quiet" aria-label={`Show your shape for ${r.item.title}`} onClick={() => setShapeFor({ id: r.invite!.id, context: meetupContext(r.item, r.invite!) })}>
+                          Show your shape
                         </button>
                       )}
                       <button type="button" class="button quiet" aria-label={`${r.invite?.outgoing ? 'Call off' : 'Leave'} ${r.item.title}`} onClick={() => void leaveOrCancel(r)}>
@@ -361,7 +391,7 @@ export function TodayScreen({ name, programme, relay, myTopics, syncTick, onAddS
 
       {!programme.sample && <ProgrammeNote programme={programme} />}
 
-      {findMe && <FindMeCardView inviteId={findMe} onClose={() => setFindMe(null)} />}
+      {shapeFor && <MeetupShapeView inviteId={shapeFor.id} context={shapeFor.context} onClose={() => setShapeFor(null)} />}
 
       {protecting && (
         <ProtectForm
@@ -375,6 +405,11 @@ export function TodayScreen({ name, programme, relay, myTopics, syncTick, onAddS
       )}
     </section>
   );
+}
+
+/** "Lunch hall · Back left, by the door" for a meetup. */
+function meetupContext(item: ScheduleItem, inv: Invite): string {
+  return [item.place ?? inv.place, describeSpot(inv.meetingSpot)].filter(Boolean).join(' · ') || KIND_INFO[inv.kind].label;
 }
 
 function start(r: Row) {

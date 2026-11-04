@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { randomId } from '../model/ids';
-import { helloSecret, importPublicKey, matchWord, newPairKey, pairSecret, PUBLIC_KEY_CHARS, type PairKey, type PairSide } from './pairing';
+import { cardFromSeed } from '../schedule/findme';
+import { helloSecret, importPublicKey, matchSeed, matchWord, newPairKey, pairSecret, PUBLIC_KEY_CHARS, type PairKey, type PairSide } from './pairing';
 
 async function side(): Promise<{ key: PairKey; pub: PairSide }> {
   const key = await newPairKey();
@@ -57,6 +58,13 @@ describe('pairing', () => {
     await expect(importPublicKey('A'.repeat(PUBLIC_KEY_CHARS))).rejects.toThrow(); // not a point on the curve
     await expect(importPublicKey(good.slice(1))).rejects.toThrow();
     await expect(importPublicKey(`${good.slice(0, -1)}!`)).rejects.toThrow();
+  });
+
+  it('gives both phones the same shape card, and a swapped key a different seed', async () => {
+    const a = await side();
+    const b = await side();
+    expect(await cardFromSeed(matchSeed(a.pub, b.pub))).toEqual(await cardFromSeed(matchSeed(b.pub, a.pub)));
+    expect(matchSeed(a.pub, { ...b.pub, publicKey: (await newPairKey()).publicKey })).not.toBe(matchSeed(a.pub, b.pub));
   });
 
   it('builds readable words', async () => {
