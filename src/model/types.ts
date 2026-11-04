@@ -117,6 +117,8 @@ export interface ScheduleItem {
   breakKind?: BreakKind;
   protectedKind?: ProtectedKind;
   inviteId?: string;
+  /** A saved session marked as Focus (F22): invites and nudges wait until it ends. */
+  focus?: boolean;
 }
 
 export type InviteKind =

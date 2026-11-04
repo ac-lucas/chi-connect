@@ -1,0 +1,134 @@
+import { useEffect, useMemo, useState } from 'preact/hooks';
+import { randomId } from '../model/ids';
+import { knownTagById } from '../model/tags';
+import type { ScheduleItem } from '../model/types';
+import { dayLabel, overlaps, programmeDays, searchSessions, timeRange, timeRangeSpoken } from '../programme/programme';
+import { FORMAT_LABELS, type Programme, type ProgrammeSession } from '../programme/types';
+import { deleteScheduleItem, listAllSchedule, putScheduleItem } from '../storage/db';
+import { announce } from '../ui/announce';
+import { useScreenHeading } from '../ui/useScreenHeading';
+
+interface Props {
+  programme: Programme;
+  initialDay: number;
+  onDone: () => void;
+}
+
+/** Quick-add (F10): search and tap. No browsing screens. */
+export function AddSessionsScreen({ programme, initialDay, onDone }: Props) {
+  const heading = useScreenHeading<HTMLHeadingElement>();
+  const days = programmeDays(programme);
+  const [day, setDay] = useState(days.includes(initialDay) ? initialDay : days[0]!);
+  const [query, setQuery] = useState('');
+  const [saved, setSaved] = useState<ScheduleItem[]>([]);
+
+  const refresh = () => listAllSchedule().then((all) => setSaved(all.filter((s) => s.type === 'session')));
+  useEffect(() => {
+    void refresh();
+  }, []);
+
+  const results = useMemo(() => searchSessions(programme, query, day), [programme, query, day]);
+  const savedBySession = new Map(saved.map((s) => [s.programmeSessionId, s]));
+
+  async function toggle(s: ProgrammeSession) {
+    const existing = savedBySession.get(s.id);
+    if (existing) {
+      await deleteScheduleItem(existing.id);
+      announce(`Removed ${s.title}.`);
+    } else {
+      await putScheduleItem({
+        id: randomId(),
+        type: 'session',
+        source: 'user',
+        programmeSessionId: s.id,
+        title: s.title,
+        place: s.room,
+        start: s.start,
+        end: s.end,
+      });
+      const clash = saved.find((x) => overlaps(x, s));
+      announce(clash ? `Added ${s.title}. It overlaps ${clash.title}.` : `Added ${s.title}.`);
+    }
+    await refresh();
+  }
+
+  return (
+    <section class="stack" aria-labelledby="add-heading">
+      <div>
+        <h2 id="add-heading" ref={heading} tabIndex={-1}>
+          Add sessions
+        </h2>
+        {programme.sample && (
+          <p class="hint">
+            <span class="badge">Sample</span> Made-up sessions so you can try things out. The real programme replaces these.
+          </p>
+        )}
+      </div>
+
+      <div class="segmented" role="group" aria-label="Day">
+        {days.map((d) => (
+          <button key={d} type="button" aria-pressed={d === day} onClick={() => setDay(d)}>
+            {dayLabel(d)}
+          </button>
+        ))}
+      </div>
+
+      <div class="field">
+        <label for="session-search">Search by title, topic or room</label>
+        <input id="session-search" type="search" value={query} autocomplete="off" onInput={(e) => setQuery(e.currentTarget.value)} />
+      </div>
+
+      <p class="visually-hidden" role="status">
+        {results.length === 0 ? 'No sessions match.' : `${results.length} sessions.`}
+      </p>
+      {results.length === 0 ? (
+        <p class="muted">Nothing matches that on {dayLabel(day, 'long')}.</p>
+      ) : (
+        <ul class="sessions">
+          {results.map((s) => {
+            const isSaved = savedBySession.has(s.id);
+            const clash = !isSaved && saved.find((x) => overlaps(x, s));
+            return (
+              <li key={s.id} class={`session-row card${isSaved ? ' saved' : ''}`}>
+                <div class="session-main">
+                  <p class="session-time">
+                    <span aria-hidden="true">{timeRange(s.start, s.end)}</span>
+                    <span class="visually-hidden">{timeRangeSpoken(s.start, s.end)}</span>
+                    {s.room && <span class="muted"> · {s.room}</span>}
+                  </p>
+                  <h3 class="session-title">{s.title}</h3>
+                  <p class="muted session-meta">
+                    {FORMAT_LABELS[s.format]}
+                    {s.topics.length > 0 && ` · ${s.topics.map((t) => knownTagById(t)?.label ?? t).join(', ')}`}
+                  </p>
+                  {clash && <p class="hint">Overlaps {clash.title}.</p>}
+                </div>
+                <button
+                  type="button"
+                  class={`button ${isSaved ? '' : 'secondary'}`}
+                  aria-pressed={isSaved}
+                  aria-label={`Add ${s.title}`}
+                  onClick={() => void toggle(s)}
+                >
+                  {isSaved ? (
+                    <>
+                      <span aria-hidden="true">✓</span> Added
+                    </>
+                  ) : (
+                    'Add'
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <div class="actions">
+        <button type="button" class="button" onClick={onDone}>
+          Done
+        </button>
+      </div>
+    </section>
+  );
+}

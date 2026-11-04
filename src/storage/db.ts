@@ -10,6 +10,10 @@ export interface Settings {
   demoSeeded: boolean;
   /** One-way connect codes we've shown recently. */
   intros: Intro[];
+  /** Day 1 of the sample programme (local midnight), fixed the first time the app is opened. */
+  sampleAnchor: number;
+  /** Auto-break suggestions the person skipped (keys from planDay). */
+  skippedBreaks: string[];
 }
 
 interface PebbleSchema extends DBSchema {
@@ -166,6 +170,25 @@ export async function seedDemoOnce(now = Date.now()): Promise<void> {
   for (const n of DEMO_NOTES) await tx.objectStore('notes').put({ ...n, createdAt: now });
   await tx.objectStore('settings').put(true, 'demoSeeded');
   await tx.done;
+}
+
+/** Day 1 of the sample programme: today, the first time this is asked, and the same day after that. */
+export async function getSampleAnchor(now = Date.now()): Promise<number> {
+  const saved = await getSetting('sampleAnchor');
+  if (saved) return saved;
+  const d = new Date(now);
+  d.setHours(0, 0, 0, 0);
+  await setSetting('sampleAnchor', d.getTime());
+  return d.getTime();
+}
+
+export async function listAllSchedule(): Promise<ScheduleItem[]> {
+  return (await db()).getAllFromIndex('schedule', 'byStart');
+}
+
+export async function skipBreak(key: string): Promise<void> {
+  const list = (await getSetting('skippedBreaks')) ?? [];
+  if (!list.includes(key)) await setSetting('skippedBreaks', [...list, key].slice(-500));
 }
 
 /** Delete everything this app keeps on this device. */

@@ -13,7 +13,10 @@ import { PeopleScreen } from './screens/PeopleScreen';
 import { PersonScreen } from './screens/PersonScreen';
 import { ProfileEditor } from './screens/ProfileEditor';
 import { TodayScreen } from './screens/TodayScreen';
-import { getIntros, getProfile, listConnections, putConnection, requestPersistentStorage, saveProfile, seedDemoOnce } from './storage/db';
+import { AddSessionsScreen } from './screens/AddSessionsScreen';
+import { loadProgramme } from './programme/programme';
+import type { Programme } from './programme/types';
+import { getIntros, getProfile, getSampleAnchor, listConnections, putConnection, requestPersistentStorage, saveProfile, seedDemoOnce } from './storage/db';
 import { announce } from './ui/announce';
 import { Announcer } from './ui/Announcer';
 
@@ -23,6 +26,7 @@ type Screen =
   | { kind: 'edit' }
   | { kind: 'connect'; code?: string }
   | { kind: 'share' }
+  | { kind: 'sessions'; day: number }
   | { kind: 'enter-code' }
   | { kind: 'request'; theirs: ConnectPayload }
   | { kind: 'person'; id: string; justConnected?: boolean };
@@ -53,6 +57,11 @@ export function App() {
   const [screen, setScreen] = useState<Screen>({ kind: 'tabs' });
   const [pendingCode, setPendingCode] = useState<string | undefined>(takeCodeFromLink);
   const [loadError, setLoadError] = useState(false);
+  const [programme, setProgramme] = useState<Programme | null>(null);
+
+  useEffect(() => {
+    void getSampleAnchor().then((anchor) => setProgramme(loadProgramme(anchor)));
+  }, []);
 
   const refreshConnections = () => listConnections().then(setConnections);
 
@@ -203,8 +212,14 @@ export function App() {
     ) : (
       <p class="muted">That person isn’t here any more.</p>
     );
+  } else if (screen.kind === 'sessions' && programme) {
+    body = <AddSessionsScreen programme={programme} initialDay={screen.day} onDone={() => goTab('today')} />;
   } else if (tab === 'today') {
-    body = <TodayScreen name={profile.displayName} />;
+    body = programme ? (
+      <TodayScreen name={profile.displayName} programme={programme} onAddSessions={(day) => setScreen({ kind: 'sessions', day })} />
+    ) : (
+      <p class="muted">Loading…</p>
+    );
   } else if (tab === 'people') {
     body = (
       <PeopleScreen

@@ -71,12 +71,12 @@ export async function importPublicKey(b64: string): Promise<CryptoKey> {
   return crypto.subtle.importKey('raw', raw as BufferSource, P256, false, []);
 }
 
-/** The two sides in a fixed order, so both phones build the same bytes. */
 /** Turn a private key saved as JWK back into a usable, non-extractable key. */
 export function importPrivateJwk(jwk: JsonWebKey): Promise<CryptoKey> {
   return crypto.subtle.importKey('jwk', jwk, P256, false, ['deriveBits']);
 }
 
+/** The two sides in a fixed order, so both phones build the same bytes. */
 function sorted(a: PairSide, b: PairSide): string {
   return [`${a.nonce}.${a.publicKey}`, `${b.nonce}.${b.publicKey}`].sort().join(':');
 }
