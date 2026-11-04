@@ -26,6 +26,8 @@ export const INTRO_TTL_MS = 20 * 60 * 60 * 1000;
 export const INTRO_KEEP_MS = 48 * 60 * 60 * 1000;
 const MESSAGE_TTL_S = 24 * 60 * 60;
 const ID = /^[A-Za-z0-9_-]{22}$/;
+const SESSION_ID = /^[A-Za-z0-9_-]{1,40}$/;
+export const MAX_SHARED_SESSIONS = 300;
 
 /** A fresh mailbox: a random token, and the ID made from it (see mailboxIdFor). */
 export async function newBox(): Promise<Box> {
@@ -158,7 +160,9 @@ export type PairMessage =
   | { t: 'invite'; v: 1; invite: WireInvite }
   | { t: 'yes'; v: 1; id: string }
   | { t: 'cancel'; v: 1; id: string }
-  | { t: 'update'; v: 1; id: string; place?: string; spot?: MeetingSpot };
+  | { t: 'update'; v: 1; id: string; place?: string; spot?: MeetingSpot }
+  /** F14: the programme session IDs someone saved, sent only if they chose to share with this person. Empty = stopped sharing. */
+  | { t: 'sessions'; v: 1; ids: string[] };
 
 /** Send a message to a connection's mailbox, sealed with the pair's key. */
 export async function sendPairMessage(t: Transport, c: Connection, msg: PairMessage, ttlSeconds = MESSAGE_TTL_S): Promise<void> {
@@ -183,6 +187,10 @@ function parsePairMessage(value: unknown): PairMessage | null {
     return invite ? { t: 'invite', v: 1, invite } : null;
   }
   if ((msg.t === 'yes' || msg.t === 'cancel') && typeof msg.id === 'string' && ID.test(msg.id)) return { t: msg.t, v: 1, id: msg.id };
+  if (msg.t === 'sessions' && Array.isArray(msg.ids) && msg.ids.length <= MAX_SHARED_SESSIONS) {
+    const ids = [...new Set(msg.ids.filter((x): x is string => typeof x === 'string' && SESSION_ID.test(x)))];
+    return { t: 'sessions', v: 1, ids };
+  }
   if (msg.t === 'update' && typeof msg.id === 'string' && ID.test(msg.id)) {
     const place = cleanText(msg.place, LIMITS_INVITE.place) || undefined;
     return { t: 'update', v: 1, id: msg.id, place, spot: cleanSpot(msg.spot) };

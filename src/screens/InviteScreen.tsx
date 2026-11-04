@@ -20,6 +20,8 @@ export interface InviteDraft {
   sessionTitle?: string;
   /** For sessions, the room. */
   room?: string;
+  /** People to tick to start with (for example, connections who saved the same session). */
+  preselect?: string[];
 }
 
 interface Props {
@@ -36,7 +38,7 @@ export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
   const heading = useScreenHeading<HTMLHeadingElement>();
   const [people, setPeople] = useState<Connection[]>([]);
   const [kind, setKind] = useState<InviteKind>(draft.kinds[0]!);
-  const [chosen, setChosen] = useState<Set<string>>(new Set());
+  const [chosen, setChosen] = useState<Set<string>>(new Set(draft.preselect ?? []));
   const [confirmAll, setConfirmAll] = useState(false);
   const [placeId, setPlaceId] = useState<string>(draft.room ? 'room' : (PLACES[0]?.id ?? 'own'));
   const [ownPlace, setOwnPlace] = useState('');

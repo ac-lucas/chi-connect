@@ -16,6 +16,7 @@ import { TodayScreen } from './screens/TodayScreen';
 import { AddSessionsScreen } from './screens/AddSessionsScreen';
 import { InviteScreen, type InviteDraft } from './screens/InviteScreen';
 import { handleInviteMessage } from './schedule/invites';
+import { handleSessionsMessage, shareSessionsIfChanged } from './schedule/overlap';
 import { checkFeed, POLL_MS } from './programme/feed';
 import { resolveProgramme } from './programme/programme';
 import type { Programme } from './programme/types';
@@ -142,10 +143,13 @@ export function App() {
           connections: listConnections,
           put: putConnection,
           onPairMessage: async (c, msg, sentAt) => {
+            if (msg.t === 'sessions') return handleSessionsMessage(c, msg.ids);
             const what = await handleInviteMessage(c, msg, sentAt);
             if (what === 'new') newInvites.push(c.profile.displayName);
           },
         });
+        // Send my saved-session list to people I share it with, if it changed (F14).
+        await shareSessionsIfChanged(relay);
         if (r.messages) setSyncTick((n) => n + 1);
         // New invites are announced, except while protected time or a Focus session is running (they wait).
         if (newInvites.length && !(await isHoldingNow())) {
@@ -265,6 +269,7 @@ export function App() {
         myTags={profile.tags}
         justConnected={screen.justConnected}
         relay={relay}
+        programme={programme}
         onChanged={() => void refreshConnections()}
         onBack={() => goTab('people')}
         onRemoved={async () => {

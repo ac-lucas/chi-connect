@@ -65,9 +65,13 @@ export interface Connection {
   via: 'face-to-face' | 'request' | 'demo';
   /** Per-connection secret (base64url), used to derive encryption keys. */
   sharedSecret?: string;
+  /** F14: whether I share my saved sessions with them (opt-in, revocable). */
   scheduleSharing: boolean;
-  /** Saved session IDs they chose to share with you. */
+  /** Saved session IDs they chose to share with me. */
   sharedSessionIds: string[];
+  /** What I last sent them (a hash of my session list) and when, so changes are sent once. */
+  lastSharedHash?: string;
+  lastSharedAt?: number;
   /** Demo connections are labelled as demo everywhere they appear. */
   demo: boolean;
 }

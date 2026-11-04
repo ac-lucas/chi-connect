@@ -2,7 +2,10 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Connection, Note, Tag } from '../model/types';
 import { approveRequest } from '../relay/protocol';
 import { RelayError, type Transport } from '../relay/transport';
-import { listNotes, putConnection, removeConnection } from '../storage/db';
+import { listAllSchedule, listNotes, putConnection, removeConnection } from '../storage/db';
+import type { Programme } from '../programme/types';
+import { dayLabel, timeRange } from '../programme/programme';
+import { demoSessionIds, shareSessionsIfChanged } from '../schedule/overlap';
 import { announce } from '../ui/announce';
 import { useScreenHeading } from '../ui/useScreenHeading';
 import { ProfileCard } from './ProfileCard';
@@ -13,17 +16,31 @@ interface Props {
   myTags: Tag[];
   justConnected?: boolean;
   relay: Transport | null;
+  programme: Programme | null;
   onBack: () => void;
   onRemoved: () => void;
   onChanged: () => void;
 }
 
-export function PersonScreen({ connection: c, myTags, justConnected, relay, onBack, onRemoved, onChanged }: Props) {
+export function PersonScreen({ connection: c, myTags, justConnected, relay, programme, onBack, onRemoved, onChanged }: Props) {
   const heading = useScreenHeading<HTMLHeadingElement>();
   const [notes, setNotes] = useState<Note[]>([]);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const [mySessionIds, setMySessionIds] = useState<string[]>([]);
+  useEffect(() => {
+    void listAllSchedule().then((all) => setMySessionIds(all.filter((s) => s.type === 'session' && s.programmeSessionId).map((s) => s.programmeSessionId!)));
+  }, [c.id]);
+  const theirIds = programme ? (c.demo ? demoSessionIds(c, programme) : c.sharedSessionIds) : [];
+  const both = programme ? programme.sessions.filter((s) => mySessionIds.includes(s.id) && theirIds.includes(s.id)) : [];
+
+  async function toggleSharing(on: boolean) {
+    await putConnection({ ...c, scheduleSharing: on });
+    onChanged();
+    announce(on ? `${name} can now see which sessions you’ve saved.` : `Stopped sharing your sessions with ${name}.`);
+    if (relay && !c.demo) void shareSessionsIfChanged(relay).catch(() => {});
+  }
   const confirmRef = useRef<HTMLButtonElement>(null);
   const name = c.profile.displayName;
 
@@ -131,6 +148,33 @@ export function PersonScreen({ connection: c, myTags, justConnected, relay, onBa
               Cancel request
             </button>
           </div>
+        </section>
+      )}
+
+      {c.state === 'connected' && (
+        <section class="stack" aria-labelledby="share-heading">
+          <h3 id="share-heading">Sessions</h3>
+          <label class="check">
+            <input type="checkbox" checked={c.scheduleSharing} onChange={(e) => void toggleSharing(e.currentTarget.checked)} />
+            <span>Let {name} see which sessions I’ve saved</span>
+          </label>
+          <p class="hint">Only the sessions, nothing else. Turn it off any time and your list is taken back.</p>
+          {theirIds.length === 0 && !c.demo && <p class="muted">{name} hasn’t shared their sessions with you.</p>}
+          {both.length > 0 && (
+            <>
+              <p>
+                You’re both going to {both.length === 1 ? 'this' : `these ${both.length}`}
+                {c.demo && <span class="badge">Simulated</span>}:
+              </p>
+              <ul class="both">
+                {both.slice(0, 8).map((s) => (
+                  <li key={s.id}>
+                    {s.title} <span class="muted">· {dayLabel(s.start)} {timeRange(s.start, s.end)}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </section>
       )}
 

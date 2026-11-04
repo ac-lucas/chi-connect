@@ -4,7 +4,9 @@ import { knownTagById } from '../model/tags';
 import type { ScheduleItem } from '../model/types';
 import { dayLabel, MAX_RESULTS, overlaps, programmeDays, searchSessions, timeRange, timeRangeSpoken } from '../programme/programme';
 import { FORMAT_LABELS, type Programme, type ProgrammeSession } from '../programme/types';
-import { deleteScheduleItem, listAllSchedule, putScheduleItem } from '../storage/db';
+import { deleteScheduleItem, listAllSchedule, listConnections, putScheduleItem } from '../storage/db';
+import { alsoGoing, namesList } from '../schedule/overlap';
+import type { Connection } from '../model/types';
 import { announce } from '../ui/announce';
 import { useScreenHeading } from '../ui/useScreenHeading';
 import { ProgrammeNote } from './ProgrammeNote';
@@ -22,10 +24,12 @@ export function AddSessionsScreen({ programme, initialDay, onDone }: Props) {
   const [day, setDay] = useState(days.includes(initialDay) ? initialDay : days[0]!);
   const [query, setQuery] = useState('');
   const [saved, setSaved] = useState<ScheduleItem[]>([]);
+  const [people, setPeople] = useState<Connection[]>([]);
 
   const refresh = () => listAllSchedule().then((all) => setSaved(all.filter((s) => s.type === 'session')));
   useEffect(() => {
     void refresh();
+    void listConnections().then(setPeople);
   }, []);
 
   const results = useMemo(() => searchSessions(programme, query, day), [programme, query, day]);
@@ -100,6 +104,10 @@ export function AddSessionsScreen({ programme, initialDay, onDone }: Props) {
                     {s.topics.length > 0 && ` · ${s.topics.map((t) => knownTagById(t)?.label ?? t).join(', ')}`}
                   </p>
                   {clash && <p class="hint">Overlaps {clash.title}.</p>}
+                  {(() => {
+                    const going = alsoGoing(s.id, people, programme);
+                    return going.length ? <p class="also-going">Going: {namesList(going)}</p> : null;
+                  })()}
                 </div>
                 <button
                   type="button"

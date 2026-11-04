@@ -9,6 +9,7 @@ import { deleteInvite, deleteScheduleItem, getSetting, listAllSchedule, listConn
 import { cancelInvite, inviteTitle, KIND_INFO, pendingIncoming } from '../schedule/invites';
 import type { Transport } from '../relay/transport';
 import { FindMeCardView } from './FindMeCardView';
+import { alsoGoing, namesList } from '../schedule/overlap';
 import type { InviteDraft } from './InviteScreen';
 import { InvitesPanel } from './InvitesPanel';
 import { announce } from '../ui/announce';
@@ -111,8 +112,8 @@ export function TodayScreen({ name, programme, relay, syncTick, onAddSessions, o
   function inviteFromBreak(b: PlannedBreak) {
     onInvite({ kinds: b.kind === 'meal' ? ['meal', 'break-together'] : ['break-together', 'meal'], start: b.start, end: b.end });
   }
-  function inviteFromSession(s: ScheduleItem) {
-    onInvite({ kinds: ['sit-together', 'arrive-together', 'walk-over'], start: s.start, end: s.end, sessionId: s.programmeSessionId, sessionTitle: s.title, room: s.place });
+  function inviteFromSession(s: ScheduleItem, preselect?: string[]) {
+    onInvite({ kinds: ['sit-together', 'arrive-together', 'walk-over'], start: s.start, end: s.end, sessionId: s.programmeSessionId, sessionTitle: s.title, room: s.place, preselect });
   }
   async function leaveOrCancel(r: Extract<Row, { kind: 'invite' }>) {
     const inv = r.invite;
@@ -267,6 +268,20 @@ export function TodayScreen({ name, programme, relay, syncTick, onAddSessions, o
                   )}
                   {r.kind === 'invite' && r.item.place && <p class="muted">{r.item.place}</p>}
                   {r.kind === 'session' && r.item.place && <p class="muted">{r.item.place}</p>}
+                  {r.kind === 'session' &&
+                    (() => {
+                      const going = alsoGoing(r.item.programmeSessionId, connections, programme);
+                      if (!going.length) return null;
+                      return (
+                        <p class="also-going">
+                          <span aria-hidden="true">◆ </span>
+                          Also going: {namesList(going)}.{' '}
+                          <button type="button" class="button quiet inline" onClick={() => inviteFromSession(r.item, going.map((g) => g.id))}>
+                            Sit together?
+                          </button>
+                        </p>
+                      );
+                    })()}
                   {r.kind === 'session' && r.item.focus && <p class="hint">Focus: invites and nudges wait until it ends.</p>}
                   {r.kind === 'protected' && r.item.protectedKind !== 'focus' && (
                     <p class="hint">{PROTECT_LABELS[r.item.protectedKind as 'recharge' | 'off']?.line}</p>

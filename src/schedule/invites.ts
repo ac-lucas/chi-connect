@@ -119,7 +119,7 @@ function scheduleFor(i: Invite, title?: string): ScheduleItem {
 }
 
 /** Apply an invite message from a connected pair (called by the relay sync). */
-export async function handleInviteMessage(c: Connection, msg: Exclude<PairMessage, { t: 'accept' }>, sentAt: number, now = Date.now()): Promise<'new' | 'changed' | null> {
+export async function handleInviteMessage(c: Connection, msg: Exclude<PairMessage, { t: 'accept' } | { t: 'sessions' }>, sentAt: number, now = Date.now()): Promise<'new' | 'changed' | null> {
   if (msg.t === 'invite') {
     const w = msg.invite;
     if (w.start <= now || (await getInvite(w.id))) return null; // too late, or already have it
