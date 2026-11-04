@@ -1,0 +1,6 @@
+Pebble
+Copyright 2026 ac-lucas
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+Third-party components keep their own licences:
+  Preact (MIT), idb (ISC), qrcode (MIT), jsQR (Apache-2.0), fflate (MIT).

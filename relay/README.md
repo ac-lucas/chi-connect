@@ -8,7 +8,7 @@ A small message relay so two phones can reach each other when they are not side 
 | Message | mailbox ID, opaque ciphertext (encrypted on the phone), created and expiry times | until read and acknowledged, at most 24 hours |
 | Pairing code | six-digit code, opaque ciphertext | until redeemed, at most 2 minutes |
 
-Rate limiting uses a salted hash of the client IP address, made inside the relay's single Durable Object with a random salt held only in memory, and kept only for the length of the limit window. IP addresses are not written to storage. Request logging is switched off in `wrangler.toml` (verify the platform's own logs and retention).
+Rate limiting uses a salted hash of the client IP address, made inside the relay's single Durable Object with a random salt held only in memory, and kept only for the length of the limit window. IP addresses are not written to storage. Request logging (Workers Logs) is switched off in `wrangler.toml`. Cloudflare, as the host, still processes IP addresses to deliver requests and keeps its own logs for a limited time under its privacy policy; it does not publish a fixed period.
 
 The relay cannot read messages: they are AES-GCM encrypted on the phone with keys from an ECDH (P-256) exchange, so only the two phones hold them. Every code a phone shows carries a fresh public key; the private key never leaves the phone. Requests are sealed to the key in the code they answer, so neither the relay nor anyone who saw that code can open them.
 

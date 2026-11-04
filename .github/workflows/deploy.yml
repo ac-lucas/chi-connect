@@ -25,7 +25,15 @@ jobs:
         with:
           node-version: 24
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            relay/package-lock.json
       - run: npm ci
+      # Tests cover the app and the relay logic (relay/src/core.test.ts). A failure stops the deploy.
+      - run: npm test
+      # Relay typecheck. --ignore-scripts skips the local Workers runtime download, which typechecking doesn't need.
+      - run: npm ci --prefix relay --ignore-scripts
+      - run: npm run typecheck --prefix relay
       - run: npm run build
         env:
           # Relay address, set under Settings > Secrets and variables > Actions > Variables. Not a secret.
