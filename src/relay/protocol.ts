@@ -11,7 +11,10 @@
 //  If A ignores or declines, nothing is sent. B is never told (quiet by default).
 
 import { randomId } from '../model/ids';
-import type { Connection, Intro, SharedProfile } from '../model/types';
+import type { Connection, Intro, MeetingSpot, SharedProfile } from '../model/types';
+import { cleanText } from '../model/text';
+import { cleanSpot } from '../schedule/spot';
+import { LIMITS_INVITE, parseWireInvite, type WireInvite } from './invites';
 import { decodeCode, encodeCode, type ConnectPayload } from '../connect/payload';
 import { helloSecret, isPublicKeyText, newPairKey, pairSecret, PUBLIC_KEY_CHARS } from '../connect/pairing';
 import { codeKey, mailboxIdFor, mailboxKey, open, seal } from './crypto';
@@ -146,8 +149,24 @@ export async function approveRequest(t: Transport, c: Connection, now = Date.now
   return { ...c, state: 'connected', connectedAt: now, myMailboxId: box.id, myMailboxToken: box.token };
 }
 
-/** Messages between connected (or pending-sent) pairs, after the hello. */
-export type PairMessage = { t: 'accept'; v: 1; mailbox: string };
+/**
+ * Messages between connected (or pending-sent) pairs, after the hello. Invites go to connected pairs only.
+ * There is deliberately no "no" reply: declining or ignoring an invite sends nothing (quiet by default).
+ */
+export type PairMessage =
+  | { t: 'accept'; v: 1; mailbox: string }
+  | { t: 'invite'; v: 1; invite: WireInvite }
+  | { t: 'yes'; v: 1; id: string }
+  | { t: 'cancel'; v: 1; id: string }
+  | { t: 'update'; v: 1; id: string; place?: string; spot?: MeetingSpot };
+
+/** Send a message to a connection's mailbox, sealed with the pair's key. */
+export async function sendPairMessage(t: Transport, c: Connection, msg: PairMessage, ttlSeconds = MESSAGE_TTL_S): Promise<void> {
+  if (c.state !== 'connected' || !c.mailboxId || !c.sharedSecret) throw new Error('not-connected');
+  const ttl = Math.max(60, Math.min(MESSAGE_TTL_S, Math.round(ttlSeconds)));
+  const ct = await seal(await mailboxKey(c.sharedSecret, 'msg', c.mailboxId), msg, c.mailboxId);
+  await t.send(c.mailboxId, ct, ttl);
+}
 
 /** Decrypt a message to one of our pair mailboxes. Null if it doesn't open (wrong key, tampered or junk). */
 async function openPair(c: Connection, ct: string): Promise<unknown> {
@@ -157,8 +176,16 @@ async function openPair(c: Connection, ct: string): Promise<unknown> {
 
 function parsePairMessage(value: unknown): PairMessage | null {
   const msg = value as Record<string, unknown> | null;
-  if (msg && msg.t === 'accept' && msg.v === 1 && typeof msg.mailbox === 'string' && ID.test(msg.mailbox)) {
-    return { t: 'accept', v: 1, mailbox: msg.mailbox };
+  if (!msg || typeof msg !== 'object' || msg.v !== 1) return null;
+  if (msg.t === 'accept' && typeof msg.mailbox === 'string' && ID.test(msg.mailbox)) return { t: 'accept', v: 1, mailbox: msg.mailbox };
+  if (msg.t === 'invite') {
+    const invite = parseWireInvite(msg.invite);
+    return invite ? { t: 'invite', v: 1, invite } : null;
+  }
+  if ((msg.t === 'yes' || msg.t === 'cancel') && typeof msg.id === 'string' && ID.test(msg.id)) return { t: msg.t, v: 1, id: msg.id };
+  if (msg.t === 'update' && typeof msg.id === 'string' && ID.test(msg.id)) {
+    const place = cleanText(msg.place, LIMITS_INVITE.place) || undefined;
+    return { t: 'update', v: 1, id: msg.id, place, spot: cleanSpot(msg.spot) };
   }
   return null;
 }
@@ -171,11 +198,15 @@ export interface SyncStore {
   intros(): Promise<Intro[]>;
   connections(): Promise<Connection[]>;
   put(c: Connection): Promise<void>;
+  /** Invites and replies from a connected pair. `sentAt` is when the relay received it. */
+  onPairMessage?(c: Connection, msg: Exclude<PairMessage, { t: 'accept' }>, sentAt: number): Promise<void>;
 }
 
 export interface SyncResult {
   newRequests: Connection[];
   accepted: Connection[];
+  /** Invite messages handled. */
+  messages: number;
 }
 
 /** Fetch every mailbox we own, apply what arrived, and clear handled or unreadable messages from the relay. */
@@ -187,7 +218,7 @@ export async function syncOnce(t: Transport, store: SyncStore, now = Date.now())
     ...intros.map((i) => ({ id: i.mailboxId, token: i.mailboxToken })),
     ...owned.map((c) => ({ id: c.myMailboxId!, token: c.myMailboxToken! })),
   ];
-  const result: SyncResult = { newRequests: [], accepted: [] };
+  const result: SyncResult = { newRequests: [], accepted: [], messages: 0 };
   if (boxes.length === 0) return result;
 
   const inbox = await t.inbox(boxes);
@@ -229,6 +260,10 @@ export async function syncOnce(t: Transport, store: SyncStore, now = Date.now())
           await store.put(done);
           result.accepted.push(done);
         }
+        ackOne(box, m.id);
+      } else if (msg && c.state === 'connected' && store.onPairMessage) {
+        await store.onPairMessage(c, msg, m.created);
+        result.messages += 1;
         ackOne(box, m.id);
       }
       // Anything else that opened is left alone: it may be a newer message type, and it expires on its own.

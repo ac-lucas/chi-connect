@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { randomId } from '../model/ids';
-import type { EnergyLevel, EnergySetting, ProtectedKind, ScheduleItem } from '../model/types';
+import type { Connection, EnergyLevel, EnergySetting, Invite, ProtectedKind, ScheduleItem } from '../model/types';
 import { dayLabel, programmeDays, startOfDay, timeRange, timeRangeSpoken } from '../programme/programme';
 import type { Programme } from '../programme/types';
 import { planDay, type Busy, type HeadsUp, type PlannedBreak } from '../schedule/breaks';
 import { ENERGY, ENERGY_ORDER, energyToday } from '../schedule/energy';
-import { deleteScheduleItem, getSetting, listAllSchedule, putScheduleItem, setSetting, skipBreak } from '../storage/db';
+import { deleteInvite, deleteScheduleItem, getSetting, listAllSchedule, listConnections, listInvites, putScheduleItem, setSetting, skipBreak } from '../storage/db';
+import { cancelInvite, inviteTitle, KIND_INFO, pendingIncoming } from '../schedule/invites';
+import type { Transport } from '../relay/transport';
+import { FindMeCardView } from './FindMeCardView';
+import type { InviteDraft } from './InviteScreen';
+import { InvitesPanel } from './InvitesPanel';
 import { announce } from '../ui/announce';
 import { useScreenHeading } from '../ui/useScreenHeading';
 import { ProgrammeNote } from './ProgrammeNote';
@@ -13,7 +18,11 @@ import { ProgrammeNote } from './ProgrammeNote';
 interface Props {
   name: string;
   programme: Programme;
+  relay: Transport | null;
+  /** Changes when the relay sync brought news, so the screen reloads. */
+  syncTick: number;
   onAddSessions: (day: number) => void;
+  onInvite: (draft: InviteDraft) => void;
 }
 
 const DAY_MS = 86_400_000;
@@ -34,9 +43,10 @@ const clock = (t: number) => new Date(t).toLocaleTimeString(undefined, { hour: '
 type Row =
   | { kind: 'session'; item: ScheduleItem }
   | { kind: 'protected'; item: ScheduleItem }
-  | { kind: 'break'; brk: PlannedBreak };
+  | { kind: 'break'; brk: PlannedBreak }
+  | { kind: 'invite'; item: ScheduleItem; invite?: Invite };
 
-export function TodayScreen({ name, programme, onAddSessions }: Props) {
+export function TodayScreen({ name, programme, relay, syncTick, onAddSessions, onInvite }: Props) {
   const heading = useScreenHeading<HTMLHeadingElement>();
   const now = Date.now();
   const days = programmeDays(programme);
@@ -51,16 +61,29 @@ export function TodayScreen({ name, programme, onAddSessions }: Props) {
   const [protecting, setProtecting] = useState(false);
   const [changingEnergy, setChangingEnergy] = useState(false);
   const changeEnergyBtn = useRef<HTMLButtonElement>(null);
+  const [invites, setInvites] = useState<Invite[]>([]);
+  const [incoming, setIncoming] = useState<Invite[]>([]);
+  const [connections, setConnections] = useState<Connection[]>([]);
+  const [findMe, setFindMe] = useState<string | null>(null);
 
   const refresh = async () => {
     setItems(await listAllSchedule());
     setEnergySetting(await getSetting('energy'));
     setSkipped((await getSetting('skippedBreaks')) ?? []);
+    setIncoming(await pendingIncoming());
+    setInvites(await listInvites());
+    setConnections(await listConnections());
   };
   // Reload when the programme changes (for example the real feed replacing the sample).
   useEffect(() => {
     void refresh();
-  }, [programme]);
+  }, [programme, syncTick]);
+  // Simulated replies from demo people arrive a few seconds after sending: look again shortly.
+  useEffect(() => {
+    if (!invites.some((i) => i.outgoing && i.status === 'pending' && i.recipientIds.length > i.acceptedIds.length)) return;
+    const t = setTimeout(() => void refresh(), 3000);
+    return () => clearTimeout(t);
+  }, [invites]);
 
   const { level, setToday } = energyToday(energySetting, now);
   const dayItems = items.filter((i) => i.start >= day && i.start < day + DAY_MS);
@@ -75,7 +98,35 @@ export function TodayScreen({ name, programme, onAddSessions }: Props) {
     ...dayItems.filter((i) => i.type === 'session').map((item) => ({ kind: 'session' as const, item })),
     ...dayItems.filter((i) => i.type === 'protected').map((item) => ({ kind: 'protected' as const, item })),
     ...plan.breaks.map((brk) => ({ kind: 'break' as const, brk })),
+    ...dayItems
+      .filter((i) => i.type === 'invite')
+      .map((item) => ({ kind: 'invite' as const, item, invite: invites.find((x) => x.id === item.inviteId) })),
   ].sort((a, b) => start(a) - start(b));
+
+  // Invites wait while protected time or a Focus session is running (only shown as "waiting" to you).
+  const holding = items.find((i) => i.start <= now && i.end > now && (i.type === 'protected' || (i.type === 'session' && i.focus)));
+  const nameOf = (id: string) => connections.find((c) => c.id === id)?.profile.displayName ?? 'someone';
+  const nextBreak = day === today ? (plan.breaks.find((b) => b.start > now) ?? null) : null;
+
+  function inviteFromBreak(b: PlannedBreak) {
+    onInvite({ kinds: b.kind === 'meal' ? ['meal', 'break-together'] : ['break-together', 'meal'], start: b.start, end: b.end });
+  }
+  function inviteFromSession(s: ScheduleItem) {
+    onInvite({ kinds: ['sit-together', 'arrive-together', 'walk-over'], start: s.start, end: s.end, sessionId: s.programmeSessionId, sessionTitle: s.title, room: s.place });
+  }
+  async function leaveOrCancel(r: Extract<Row, { kind: 'invite' }>) {
+    const inv = r.invite;
+    if (inv?.outgoing) {
+      await cancelInvite(relay, inv);
+      announce('Called off. Everyone invited has been told.');
+    } else {
+      // Leaving one you said yes to: it just leaves your day.
+      await deleteScheduleItem(r.item.id);
+      if (inv) await deleteInvite(inv.id);
+      announce('Removed from your day.');
+    }
+    await refresh();
+  }
 
   async function chooseEnergy(l: EnergyLevel) {
     await setSetting('energy', { level: l, setAt: Date.now() });
@@ -168,6 +219,16 @@ export function TodayScreen({ name, programme, onAddSessions }: Props) {
         </div>
       )}
 
+      <InvitesPanel
+        invites={incoming}
+        connections={connections}
+        items={items}
+        relay={relay}
+        heldUntil={holding ? holding.end : null}
+        nextBreak={nextBreak}
+        onChanged={() => void refresh()}
+      />
+
       {plan.headsUps.map((h, i) => (
         <HeadsUpCard key={i} h={h} onRecharge={(from, mins) => void addProtected('recharge', from, mins)} onEdit={() => onAddSessions(day)} />
       ))}
@@ -193,7 +254,18 @@ export function TodayScreen({ name, programme, onAddSessions }: Props) {
                     <span class="visually-hidden">{timeRangeSpoken(start(r), end(r))}</span>
                     <span class="day-kind"> · {kindLabel(r)}</span>
                   </p>
-                  <p class="day-title">{title(r)}</p>
+                  <p class="day-title">
+                    {r.kind === 'invite' && r.invite ? inviteTitle(r.invite, r.invite.acceptedIds.map(nameOf)) : title(r)}
+                    {r.kind === 'invite' && r.invite?.simulated && <span class="badge">Simulated</span>}
+                  </p>
+                  {r.kind === 'invite' && r.invite?.outgoing && (
+                    <p class="muted">
+                      {r.invite.acceptedIds.length === 0
+                        ? `Invited ${r.invite.recipientIds.length}. Nobody yet, and that’s fine.`
+                        : `${r.invite.acceptedIds.length} said yes.`}
+                    </p>
+                  )}
+                  {r.kind === 'invite' && r.item.place && <p class="muted">{r.item.place}</p>}
                   {r.kind === 'session' && r.item.place && <p class="muted">{r.item.place}</p>}
                   {r.kind === 'session' && r.item.focus && <p class="hint">Focus: invites and nudges wait until it ends.</p>}
                   {r.kind === 'protected' && r.item.protectedKind !== 'focus' && (
@@ -206,6 +278,9 @@ export function TodayScreen({ name, programme, onAddSessions }: Props) {
                       <button type="button" class="button quiet" aria-pressed={!!r.item.focus} aria-label={`Focus on ${r.item.title}`} onClick={() => void toggleFocus(r.item)}>
                         Focus
                       </button>
+                      <button type="button" class="button quiet" aria-label={`Invite someone to ${r.item.title}`} onClick={() => inviteFromSession(r.item)}>
+                        Invite
+                      </button>
                       <button type="button" class="button quiet" aria-label={`Remove ${r.item.title}`} onClick={() => void removeItem(r.item)}>
                         Remove
                       </button>
@@ -217,9 +292,26 @@ export function TodayScreen({ name, programme, onAddSessions }: Props) {
                     </button>
                   )}
                   {r.kind === 'break' && (
-                    <button type="button" class="button quiet" aria-label={`Skip ${r.brk.kind === 'meal' ? 'lunch' : 'breather'} at ${clock(r.brk.start)}`} onClick={() => void skip(r.brk)}>
-                      Skip
-                    </button>
+                    <>
+                      <button type="button" class="button quiet" aria-label={`Invite someone to your ${r.brk.kind === 'meal' ? 'lunch' : 'breather'} at ${clock(r.brk.start)}`} onClick={() => inviteFromBreak(r.brk)}>
+                        Invite
+                      </button>
+                      <button type="button" class="button quiet" aria-label={`Skip ${r.brk.kind === 'meal' ? 'lunch' : 'breather'} at ${clock(r.brk.start)}`} onClick={() => void skip(r.brk)}>
+                        Skip
+                      </button>
+                    </>
+                  )}
+                  {r.kind === 'invite' && (
+                    <>
+                      {r.invite && (!r.invite.outgoing || r.invite.acceptedIds.length > 0) && (
+                        <button type="button" class="button quiet" aria-label={`Find-me card for ${r.item.title}`} onClick={() => setFindMe(r.invite!.id)}>
+                          Find-me card
+                        </button>
+                      )}
+                      <button type="button" class="button quiet" aria-label={`${r.invite?.outgoing ? 'Call off' : 'Leave'} ${r.item.title}`} onClick={() => void leaveOrCancel(r)}>
+                        {r.invite?.outgoing ? 'Call off' : 'Leave'}
+                      </button>
+                    </>
                   )}
                 </div>
               </li>
@@ -238,6 +330,8 @@ export function TodayScreen({ name, programme, onAddSessions }: Props) {
       </div>
 
       {!programme.sample && <ProgrammeNote programme={programme} />}
+
+      {findMe && <FindMeCardView inviteId={findMe} onClose={() => setFindMe(null)} />}
 
       {protecting && (
         <ProtectForm
@@ -260,11 +354,13 @@ function end(r: Row) {
   return r.kind === 'break' ? r.brk.end : r.item.end;
 }
 function glyph(r: Row) {
+  if (r.kind === 'invite') return '◆';
   if (r.kind === 'session') return r.item.focus ? '◉' : '▲';
   if (r.kind === 'protected') return PROTECT_LABELS[r.item.protectedKind as 'recharge' | 'off']?.glyph ?? '■';
   return r.brk.kind === 'meal' ? '◒' : '○';
 }
 function kindLabel(r: Row) {
+  if (r.kind === 'invite') return r.invite ? `Social · ${KIND_INFO[r.invite.kind].label}` : 'Social';
   if (r.kind === 'session') return r.item.focus ? 'Sprint, focus' : 'Sprint';
   if (r.kind === 'protected') return 'Protected';
   return r.brk.kind === 'meal' ? 'Lunch' : 'Breather';
@@ -274,7 +370,7 @@ function title(r: Row) {
   return r.brk.kind === 'meal' ? 'Lunch. Eat something good.' : 'Water, air, or nothing.';
 }
 function rowClass(r: Row) {
-  return r.kind === 'session' ? 'is-session' : r.kind === 'protected' ? 'is-protected' : 'is-break';
+  return r.kind === 'session' ? 'is-session' : r.kind === 'protected' ? 'is-protected' : r.kind === 'invite' ? 'is-social' : 'is-break';
 }
 
 function HeadsUpCard({ h, onRecharge, onEdit }: { h: HeadsUp; onRecharge: (from: number, mins: number) => void; onEdit: () => void }) {

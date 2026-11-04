@@ -223,6 +223,33 @@ select { font: inherit; color: var(--fg); background: var(--surface); min-height
 .stack-tight > * { margin: 0 0 0.25rem; }
 .credit { font-size: 0.875rem; }
 
+/* Invites, meeting spot, find-me card */
+.invite { border-left: 6px solid var(--accent); }
+.invite-title { margin: 0; font-size: 1.125rem; }
+.invite-note { font-style: italic; }
+.day-row.is-social { border-width: 2px; border-color: var(--accent); background: var(--accent-soft); }
+.try-it { border-style: dashed; }
+.spot-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.375rem; }
+.spot-cell {
+  display: flex; align-items: center; justify-content: center; text-align: center; gap: 0.25rem;
+  min-height: 3rem; padding: 0.25rem; border: 2px solid var(--border); border-radius: 0.5rem;
+  background: var(--surface); cursor: pointer; font-size: 0.875rem;
+}
+.spot-cell input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.spot-cell:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 2px; }
+.spot-cell.on { border-color: var(--accent); background: var(--accent-soft); font-weight: 700; }
+.spot-cell.on span::before { content: '✓ '; }
+.findme {
+  position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 0.75rem; padding: 1.5rem; text-align: center;
+}
+.findme-lead { font-size: 1.125rem; margin: 0; }
+.findme-shape { width: min(70vw, 50vh); height: auto; }
+.findme-word { font-size: clamp(2rem, 10vw, 4rem); margin: 0; letter-spacing: 0.02em; }
+.findme-pattern { margin: 0; font-size: 1.25rem; text-transform: uppercase; letter-spacing: 0.1em; }
+.findme-done { font: inherit; font-weight: 800; border: 0; border-radius: 999px; padding: 0.75rem 2.5rem; min-height: var(--min-target); cursor: pointer; }
+.findme-brand { position: absolute; bottom: 1rem; margin: 0; opacity: 0.85; font-weight: 700; }
+
 /* People */
 .people { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
 .person-row {

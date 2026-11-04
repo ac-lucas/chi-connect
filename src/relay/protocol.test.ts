@@ -9,8 +9,10 @@ import {
   newIntro,
   openHello,
   redeemSixDigitCode,
+  sendPairMessage,
   sendRequest,
   syncOnce,
+  type PairMessage,
   type SyncStore,
 } from './protocol';
 import { newPairKey } from '../connect/pairing';
@@ -108,6 +110,41 @@ describe('one-way connect through the relay', () => {
     a.saved.clear(); // A declines: the request is just deleted on A's phone
     expect((await syncOnce(relay, b)).accepted).toEqual([]);
     expect(b.only().state).toBe('pending-sent');
+  });
+});
+
+describe('invites between connected pairs', () => {
+  it('delivers an invite and a yes, and ignores invites from people who are only pending', async () => {
+    const relay = new SimulatedTransport();
+    const a = new Device(ana);
+    const b = new Device(sam);
+    const intro = await newIntro();
+    a.introList.push(intro);
+    await b.put(await sendRequest(relay, introPayload(a.me, intro), b.me));
+    await syncOnce(relay, a);
+    await a.put(await approveRequest(relay, a.only()));
+    await syncOnce(relay, b);
+
+    const gotB: PairMessage[] = [];
+    const gotA: PairMessage[] = [];
+    const bStore = Object.assign(b, { onPairMessage: async (_c: Connection, m: PairMessage) => void gotB.push(m) });
+    const aStore = Object.assign(a, { onPairMessage: async (_c: Connection, m: PairMessage) => void gotA.push(m) });
+    const id = 'iiiiiiiiiiiiiiiiiiiiii';
+    const start = Date.now() + 3_600_000;
+    await sendPairMessage(relay, a.only(), { t: 'invite', v: 1, invite: { id, kind: 'meal', start, end: start + 2_700_000, place: 'Lunch hall' } });
+    expect((await syncOnce(relay, bStore)).messages).toBe(1);
+    expect(gotB).toEqual([{ t: 'invite', v: 1, invite: { id, kind: 'meal', start, end: start + 2_700_000, place: 'Lunch hall' } }]);
+    await sendPairMessage(relay, b.only(), { t: 'yes', v: 1, id });
+    await syncOnce(relay, aStore);
+    expect(gotA).toEqual([{ t: 'yes', v: 1, id }]);
+    // A second sync gets nothing new: handled messages were cleared from the relay.
+    expect((await syncOnce(relay, bStore)).messages).toBe(0);
+  });
+
+  it('refuses to send to someone who is not connected', async () => {
+    const relay = new SimulatedTransport();
+    const pending = { id: 'x', profile: { displayName: 'P' }, state: 'pending-sent', scheduleSharing: false, sharedSessionIds: [], demo: false, via: 'request' } as Connection;
+    await expect(sendPairMessage(relay, pending, { t: 'yes', v: 1, id: 'iiiiiiiiiiiiiiiiiiiiii' })).rejects.toThrow();
   });
 });
 

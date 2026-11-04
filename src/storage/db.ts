@@ -177,6 +177,24 @@ export async function seedDemoOnce(now = Date.now()): Promise<void> {
   await tx.done;
 }
 
+// Invites
+export async function listInvites(): Promise<Invite[]> {
+  return (await db()).getAll('invites');
+}
+export async function getInvite(id: string): Promise<Invite | null> {
+  return (await (await db()).get('invites', id)) ?? null;
+}
+export async function putInvite(i: Invite): Promise<void> {
+  await (await db()).put('invites', i);
+}
+export async function deleteInvite(id: string): Promise<void> {
+  await (await db()).delete('invites', id);
+}
+/** The schedule entry for an invite we sent or accepted, if any. */
+export async function scheduleItemForInvite(inviteId: string): Promise<ScheduleItem | null> {
+  return (await listAllSchedule()).find((s) => s.inviteId === inviteId) ?? null;
+}
+
 /** Day 1 of the sample programme: today, the first time this is asked, and the same day after that. */
 export async function getSampleAnchor(now = Date.now()): Promise<number> {
   const saved = await getSetting('sampleAnchor');

@@ -131,23 +131,31 @@ export type InviteKind =
 
 export interface Invite {
   id: string;
-  /** Display name only. */
+  /** Display name of whoever sent it (for incoming: taken from the connection, never from the message). */
   senderName: string;
   /** Set when we sent it. */
   outgoing: boolean;
+  /** Incoming: the connection it came from. */
+  fromConnectionId?: string;
   kind: InviteKind;
   start: number;
   end: number;
   place?: string;
   programmeSessionId?: string;
+  sessionTitle?: string;
   meetingSpot?: MeetingSpot;
   note?: string;
   createdAt: number;
+  /** When it disappears if nobody answers (its start time). */
   expiresAt: number;
+  /** Incoming: when the relay received it (used to hold it during protected time). */
+  receivedAt?: number;
   recipientIds: string[];
   /** Only filled in on the sender's side, and only with people who said yes. */
   acceptedIds: string[];
   status: 'pending' | 'accepted' | 'cancelled';
+  /** Made up on this phone to show how invites work (demo people). Labelled "Simulated". */
+  simulated?: boolean;
 }
 
 export interface CatchUpItem {

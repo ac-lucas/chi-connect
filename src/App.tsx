@@ -14,10 +14,12 @@ import { PersonScreen } from './screens/PersonScreen';
 import { ProfileEditor } from './screens/ProfileEditor';
 import { TodayScreen } from './screens/TodayScreen';
 import { AddSessionsScreen } from './screens/AddSessionsScreen';
+import { InviteScreen, type InviteDraft } from './screens/InviteScreen';
+import { handleInviteMessage } from './schedule/invites';
 import { checkFeed, POLL_MS } from './programme/feed';
 import { resolveProgramme } from './programme/programme';
 import type { Programme } from './programme/types';
-import { getIntros, getProfile, getSampleAnchor, getSetting, removeSampleSessions, setSetting, listConnections, putConnection, requestPersistentStorage, saveProfile, seedDemoOnce } from './storage/db';
+import { getIntros, getProfile, listAllSchedule, getSampleAnchor, getSetting, removeSampleSessions, setSetting, listConnections, putConnection, requestPersistentStorage, saveProfile, seedDemoOnce } from './storage/db';
 import { announce } from './ui/announce';
 import { Announcer } from './ui/Announcer';
 
@@ -28,6 +30,7 @@ type Screen =
   | { kind: 'connect'; code?: string }
   | { kind: 'share' }
   | { kind: 'sessions'; day: number }
+  | { kind: 'invite'; draft: InviteDraft }
   | { kind: 'enter-code' }
   | { kind: 'request'; theirs: ConnectPayload }
   | { kind: 'person'; id: string; justConnected?: boolean };
@@ -41,6 +44,11 @@ const TABS: { id: Tab; label: string; glyph: string }[] = [
   { id: 'people', label: 'People', glyph: '◎' },
   { id: 'me', label: 'You', glyph: '◉' },
 ];
+
+/** True while protected time or a Focus session is running. */
+async function isHoldingNow(now = Date.now()): Promise<boolean> {
+  return (await listAllSchedule()).some((i) => i.start <= now && i.end > now && (i.type === 'protected' || (i.type === 'session' && !!i.focus)));
+}
 
 /** Read a connect code from the page link (#c=...) and remove it from the address bar. */
 function takeCodeFromLink(): string | undefined {
@@ -58,6 +66,7 @@ export function App() {
   const [screen, setScreen] = useState<Screen>({ kind: 'tabs' });
   const [pendingCode, setPendingCode] = useState<string | undefined>(takeCodeFromLink);
   const [loadError, setLoadError] = useState(false);
+  const [syncTick, setSyncTick] = useState(0);
   const [programme, setProgramme] = useState<Programme | null>(null);
 
   useEffect(() => {
@@ -127,7 +136,21 @@ export function App() {
       if (running || document.visibilityState !== 'visible') return;
       running = true;
       try {
-        const r = await syncOnce(relay, { intros: getIntros, connections: listConnections, put: putConnection });
+        const newInvites: string[] = [];
+        const r = await syncOnce(relay, {
+          intros: getIntros,
+          connections: listConnections,
+          put: putConnection,
+          onPairMessage: async (c, msg, sentAt) => {
+            const what = await handleInviteMessage(c, msg, sentAt);
+            if (what === 'new') newInvites.push(c.profile.displayName);
+          },
+        });
+        if (r.messages) setSyncTick((n) => n + 1);
+        // New invites are announced, except while protected time or a Focus session is running (they wait).
+        if (newInvites.length && !(await isHoldingNow())) {
+          for (const n of newInvites) announce(`${n} sent you an invite.`);
+        }
         if (r.newRequests.length || r.accepted.length) await refreshConnections();
         for (const c of r.newRequests) announce(`${c.profile.displayName} would like to connect.`);
         for (const c of r.accepted) announce(`${c.profile.displayName} said yes. You’re connected.`);
@@ -252,11 +275,20 @@ export function App() {
     ) : (
       <p class="muted">That person isn’t here any more.</p>
     );
+  } else if (screen.kind === 'invite') {
+    body = <InviteScreen me={profile.displayName} draft={screen.draft} relay={relay} onSent={() => goTab('today')} onCancel={() => goTab('today')} />;
   } else if (screen.kind === 'sessions' && programme) {
     body = <AddSessionsScreen programme={programme} initialDay={screen.day} onDone={() => goTab('today')} />;
   } else if (tab === 'today') {
     body = programme ? (
-      <TodayScreen name={profile.displayName} programme={programme} onAddSessions={(day) => setScreen({ kind: 'sessions', day })} />
+      <TodayScreen
+        name={profile.displayName}
+        programme={programme}
+        relay={relay}
+        syncTick={syncTick}
+        onAddSessions={(day) => setScreen({ kind: 'sessions', day })}
+        onInvite={(draft) => setScreen({ kind: 'invite', draft })}
+      />
     ) : (
       <p class="muted">Loading…</p>
     );
