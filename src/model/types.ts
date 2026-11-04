@@ -123,6 +123,8 @@ export interface ScheduleItem {
   inviteId?: string;
   /** A saved session marked as Focus (F22): invites and nudges wait until it ends. */
   focus?: boolean;
+  /** Added from a wildcard suggestion (F15), for the recap. */
+  fromWildcard?: boolean;
 }
 
 export type InviteKind =
@@ -165,8 +167,10 @@ export interface Invite {
 export interface CatchUpItem {
   programmeSessionId: string;
   title: string;
-  paperUrl?: string;
-  reason: 'clash';
+  start: number;
+  /** Paper links from the programme (DOI / ACM DL). */
+  papers?: { title: string; url: string }[];
+  reason: 'clash' | 'saved';
   addedAt: number;
 }
 

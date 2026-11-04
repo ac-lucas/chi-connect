@@ -15,6 +15,8 @@ import { ProfileEditor } from './screens/ProfileEditor';
 import { TodayScreen } from './screens/TodayScreen';
 import { AddSessionsScreen } from './screens/AddSessionsScreen';
 import { InviteScreen, type InviteDraft } from './screens/InviteScreen';
+import { CatchUpScreen } from './screens/CatchUpScreen';
+import { RecapScreen } from './screens/RecapScreen';
 import { handleInviteMessage } from './schedule/invites';
 import { handleSessionsMessage, shareSessionsIfChanged } from './schedule/overlap';
 import { checkFeed, POLL_MS } from './programme/feed';
@@ -32,6 +34,8 @@ type Screen =
   | { kind: 'share' }
   | { kind: 'sessions'; day: number }
   | { kind: 'invite'; draft: InviteDraft }
+  | { kind: 'catchup' }
+  | { kind: 'recap' }
   | { kind: 'enter-code' }
   | { kind: 'request'; theirs: ConnectPayload }
   | { kind: 'person'; id: string; justConnected?: boolean };
@@ -280,6 +284,10 @@ export function App() {
     ) : (
       <p class="muted">That person isn’t here any more.</p>
     );
+  } else if (screen.kind === 'catchup') {
+    body = <CatchUpScreen onBack={() => goTab('me')} />;
+  } else if (screen.kind === 'recap' && programme) {
+    body = <RecapScreen programme={programme} onBack={() => goTab('me')} />;
   } else if (screen.kind === 'invite') {
     body = <InviteScreen me={profile.displayName} draft={screen.draft} relay={relay} onSent={() => goTab('today')} onCancel={() => goTab('today')} />;
   } else if (screen.kind === 'sessions' && programme) {
@@ -290,6 +298,7 @@ export function App() {
         name={profile.displayName}
         programme={programme}
         relay={relay}
+        myTopics={profile.tags.map((t) => t.key)}
         syncTick={syncTick}
         onAddSessions={(day) => setScreen({ kind: 'sessions', day })}
         onInvite={(draft) => setScreen({ kind: 'invite', draft })}
@@ -309,10 +318,17 @@ export function App() {
       />
     );
   } else {
-    body = <MeScreen profile={profile} onEdit={() => setScreen({ kind: 'edit' })} />;
+    body = (
+      <MeScreen
+        profile={profile}
+        onEdit={() => setScreen({ kind: 'edit' })}
+        onCatchUp={() => setScreen({ kind: 'catchup' })}
+        onRecap={() => setScreen({ kind: 'recap' })}
+      />
+    );
   }
 
-  const showTabs = profile && (screen.kind === 'tabs' || screen.kind === 'person');
+  const showTabs = profile && (screen.kind === 'tabs' || screen.kind === 'person' || screen.kind === 'catchup' || screen.kind === 'recap');
   const requestCount = connections.filter((c) => c.state === 'pending-received').length;
 
   return (

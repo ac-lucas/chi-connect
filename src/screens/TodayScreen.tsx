@@ -12,6 +12,7 @@ import { FindMeCardView } from './FindMeCardView';
 import { alsoGoing, namesList } from '../schedule/overlap';
 import type { InviteDraft } from './InviteScreen';
 import { InvitesPanel } from './InvitesPanel';
+import { SuggestionsPanel } from './SuggestionsPanel';
 import { announce } from '../ui/announce';
 import { useScreenHeading } from '../ui/useScreenHeading';
 import { ProgrammeNote } from './ProgrammeNote';
@@ -20,6 +21,8 @@ interface Props {
   name: string;
   programme: Programme;
   relay: Transport | null;
+  /** My interest topics (keys), for wildcard suggestions. */
+  myTopics: string[];
   /** Changes when the relay sync brought news, so the screen reloads. */
   syncTick: number;
   onAddSessions: (day: number) => void;
@@ -47,7 +50,7 @@ type Row =
   | { kind: 'break'; brk: PlannedBreak }
   | { kind: 'invite'; item: ScheduleItem; invite?: Invite };
 
-export function TodayScreen({ name, programme, relay, syncTick, onAddSessions, onInvite }: Props) {
+export function TodayScreen({ name, programme, relay, myTopics, syncTick, onAddSessions, onInvite }: Props) {
   const heading = useScreenHeading<HTMLHeadingElement>();
   const now = Date.now();
   const days = programmeDays(programme);
@@ -227,6 +230,18 @@ export function TodayScreen({ name, programme, relay, syncTick, onAddSessions, o
         relay={relay}
         heldUntil={holding ? holding.end : null}
         nextBreak={nextBreak}
+        onChanged={() => void refresh()}
+      />
+
+      <SuggestionsPanel
+        programme={programme}
+        items={items}
+        connections={connections}
+        level={level}
+        day={day}
+        isToday={day === today}
+        myTopics={myTopics}
+        onInvite={onInvite}
         onChanged={() => void refresh()}
       />
 

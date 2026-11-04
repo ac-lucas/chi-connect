@@ -20,6 +20,14 @@ export interface Settings {
   programmeFeed: import('../programme/transform').FeedProgramme;
   /** When the feed was last asked about (so reloads don't poll faster than once a minute). */
   feedCheckedAt: number;
+  /** F18: no nudges or suggestions at all. */
+  quietMode: boolean;
+  /** F18: nudges snoozed until this time. */
+  snoozeUntil: number;
+  /** Suggestion cards dismissed, by key (wildcard:<day>, talk:<session>, nudge:<session>). Kept short. */
+  dismissed: string[];
+  /** Nudges shown per day, for the daily cap: { day key: count }. */
+  nudgeCounts: Record<string, number>;
 }
 
 interface PebbleSchema extends DBSchema {
@@ -175,6 +183,23 @@ export async function seedDemoOnce(now = Date.now()): Promise<void> {
   for (const n of DEMO_NOTES) await tx.objectStore('notes').put({ ...n, createdAt: now });
   await tx.objectStore('settings').put(true, 'demoSeeded');
   await tx.done;
+}
+
+// Catch up later (F23)
+export async function listCatchUp(): Promise<CatchUpItem[]> {
+  return (await (await db()).getAll('catchUp')).sort((a, b) => a.start - b.start);
+}
+export async function putCatchUp(c: CatchUpItem): Promise<void> {
+  await (await db()).put('catchUp', c);
+}
+export async function deleteCatchUp(programmeSessionId: string): Promise<void> {
+  await (await db()).delete('catchUp', programmeSessionId);
+}
+
+/** Remember a dismissed suggestion. */
+export async function dismiss(key: string): Promise<void> {
+  const list = (await getSetting('dismissed')) ?? [];
+  if (!list.includes(key)) await setSetting('dismissed', [...list, key].slice(-300));
 }
 
 // Invites
