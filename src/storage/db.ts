@@ -115,6 +115,26 @@ export async function putNote(n: Note): Promise<void> {
   await (await db()).put('notes', n);
 }
 
+export async function listAllNotes(): Promise<Note[]> {
+  return (await db()).getAll('notes');
+}
+export async function deleteNote(id: string): Promise<void> {
+  await (await db()).delete('notes', id);
+}
+
+// Follow-ups (F09)
+export async function listFollowUps(connectionId?: string): Promise<FollowUp[]> {
+  const d = await db();
+  const all = connectionId ? await d.getAllFromIndex('followUps', 'byConnection', connectionId) : await d.getAll('followUps');
+  return all.sort((a, b) => Number(a.done) - Number(b.done) || (a.due ?? Infinity) - (b.due ?? Infinity));
+}
+export async function putFollowUp(f: FollowUp): Promise<void> {
+  await (await db()).put('followUps', f);
+}
+export async function deleteFollowUp(id: string): Promise<void> {
+  await (await db()).delete('followUps', id);
+}
+
 // Schedule
 export async function listSchedule(from: number, to: number): Promise<ScheduleItem[]> {
   return (await db()).getAllFromIndex('schedule', 'byStart', IDBKeyRange.bound(from, to, false, true));

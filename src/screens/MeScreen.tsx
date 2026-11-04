@@ -59,7 +59,7 @@ export function MeScreen({ profile, onEdit, onCatchUp, onRecap }: Props) {
         <h3 id="me-week">Your week</h3>
         <div class="actions">
           <button type="button" class="button secondary" onClick={onRecap}>
-            Your week, in rhythm
+            Your week and follow-ups
           </button>
           <button type="button" class="button secondary" onClick={onCatchUp}>
             Catch up later{catchUp ? ` (${catchUp})` : ''}

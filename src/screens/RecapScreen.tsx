@@ -4,7 +4,9 @@ import { startOfDay } from '../programme/programme';
 import { planDay, type Busy } from '../schedule/breaks';
 import { energyToday } from '../schedule/energy';
 import { buildRecap, recapText, type Recap } from '../schedule/recap';
-import { getSetting, listAllSchedule, listCatchUp, listConnections, listInvites } from '../storage/db';
+import { getSetting, listAllNotes, listAllSchedule, listCatchUp, listConnections, listFollowUps, listInvites, putFollowUp } from '../storage/db';
+import type { Connection, FollowUp } from '../model/types';
+import { download, toCsv, toIcs, toVCard } from '../export/exports';
 import { announce } from '../ui/announce';
 import { useScreenHeading } from '../ui/useScreenHeading';
 
@@ -12,6 +14,12 @@ import { useScreenHeading } from '../ui/useScreenHeading';
 export function RecapScreen({ programme, onBack }: { programme: Programme; onBack: () => void }) {
   const heading = useScreenHeading<HTMLHeadingElement>();
   const [recap, setRecap] = useState<Recap | null>(null);
+  const [followUps, setFollowUps] = useState<FollowUp[]>([]);
+  const [people, setPeople] = useState<Connection[]>([]);
+  const loadFollowUps = async () => {
+    setFollowUps(await listFollowUps());
+    setPeople(await listConnections());
+  };
 
   useEffect(() => {
     void (async () => {
@@ -28,6 +36,7 @@ export function RecapScreen({ programme, onBack }: { programme: Programme; onBac
         breathers += planDay(busy, d, level, undefined, skipped).breaks.filter((b) => b.end < Date.now()).length;
       }
       setRecap(buildRecap(programme, items, await listInvites(), await listConnections(), await listCatchUp(), breathers));
+      await loadFollowUps();
     })();
   }, [programme]);
 
@@ -118,6 +127,67 @@ export function RecapScreen({ programme, onBack }: { programme: Programme; onBac
           )}
         </ol>
       )}
+      <section class="stack" aria-labelledby="fu-all">
+        <h3 id="fu-all">Follow-ups</h3>
+        {followUps.length === 0 ? (
+          <p class="muted">None yet. Add them on someone’s page, or tick “Follow up” in a quick note.</p>
+        ) : (
+          <ul class="followups">
+            {followUps.map((f) => {
+              const who = people.find((c) => c.id === f.connectionId);
+              return (
+                <li key={f.id} class={f.done ? 'done' : ''}>
+                  <label class="check">
+                    <input
+                      type="checkbox"
+                      checked={f.done}
+                      onChange={async () => {
+                        await putFollowUp({ ...f, done: !f.done });
+                        await loadFollowUps();
+                        announce(f.done ? 'Marked not done.' : 'Done. Nice.');
+                      }}
+                    />
+                    <span>
+                      {f.text}
+                      <span class="muted">
+                        {who ? ` · ${who.profile.displayName}${who.demo ? ' (demo)' : ''}` : ''}
+                        {f.due ? ` · by ${new Date(f.due).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}` : ''}
+                      </span>
+                    </span>
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
+      <section class="stack" aria-labelledby="take-heading">
+        <h3 id="take-heading">Take it with you</h3>
+        <p class="hint">Files made on this phone, from your own data. Only what each person chose to share is included.</p>
+        <div class="actions">
+          <button type="button" class="button secondary" onClick={async () => download('pebble-contacts.vcf', 'text/vcard', toVCard(await listConnections(), await listAllNotes()))}>
+            Contacts (vCard)
+          </button>
+          <button
+            type="button"
+            class="button secondary"
+            onClick={async () => download('pebble-people.csv', 'text/csv', toCsv(await listConnections(), await listAllNotes(), await listFollowUps()))}
+          >
+            Spreadsheet (CSV)
+          </button>
+          <button
+            type="button"
+            class="button secondary"
+            disabled={!followUps.some((f) => f.due && !f.done)}
+            onClick={async () => download('pebble-follow-ups.ics', 'text/calendar', toIcs(await listFollowUps(), await listConnections()))}
+          >
+            Follow-up reminders (calendar)
+          </button>
+        </div>
+        {!followUps.some((f) => f.due && !f.done) && <p class="hint">Reminders need a follow-up with a date.</p>}
+      </section>
+
       {recap && recap.sessions > 0 && 'clipboard' in navigator && (
         <div class="actions">
           <button type="button" class="button secondary" onClick={() => void copy()}>

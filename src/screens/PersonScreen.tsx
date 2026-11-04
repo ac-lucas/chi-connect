@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { Connection, Note, Tag } from '../model/types';
+import type { Connection, Tag } from '../model/types';
+import { NotesSection } from './NotesSection';
 import { approveRequest } from '../relay/protocol';
 import { RelayError, type Transport } from '../relay/transport';
-import { listAllSchedule, listNotes, putConnection, removeConnection } from '../storage/db';
+import { listAllSchedule, putConnection, removeConnection } from '../storage/db';
 import type { Programme } from '../programme/types';
 import { dayLabel, timeRange } from '../programme/programme';
 import { demoSessionIds, shareSessionsIfChanged } from '../schedule/overlap';
@@ -24,7 +25,6 @@ interface Props {
 
 export function PersonScreen({ connection: c, myTags, justConnected, relay, programme, onBack, onRemoved, onChanged }: Props) {
   const heading = useScreenHeading<HTMLHeadingElement>();
-  const [notes, setNotes] = useState<Note[]>([]);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -44,9 +44,6 @@ export function PersonScreen({ connection: c, myTags, justConnected, relay, prog
   const confirmRef = useRef<HTMLButtonElement>(null);
   const name = c.profile.displayName;
 
-  useEffect(() => {
-    void listNotes(c.id).then(setNotes);
-  }, [c.id]);
   useEffect(() => {
     if (confirming) confirmRef.current?.focus();
   }, [confirming]);
@@ -178,19 +175,7 @@ export function PersonScreen({ connection: c, myTags, justConnected, relay, prog
         </section>
       )}
 
-      {notes.length > 0 && (
-        <section aria-labelledby="notes-heading" class="stack">
-          <h3 id="notes-heading">Your notes</h3>
-          <ul class="notes">
-            {notes.map((n) => (
-              <li key={n.id} class="card">
-                {n.text}
-              </li>
-            ))}
-          </ul>
-          <p class="hint">Only you can see these.</p>
-        </section>
-      )}
+      {c.state === 'connected' && <NotesSection connection={c} quickCapture={justConnected} />}
 
       {c.state === 'connected' && (
       <section aria-labelledby="remove-heading" class="stack">

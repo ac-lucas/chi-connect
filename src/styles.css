@@ -267,6 +267,14 @@ select { font: inherit; color: var(--fg); background: var(--surface); min-height
 .recap-big.inline { font-size: 2rem; }
 .recap-label { font-weight: 700; }
 
+.quick-capture { border-left: 6px solid var(--accent); }
+.followups { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.25rem; }
+.followups li { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
+.followups li.done .check span { text-decoration: line-through; color: var(--muted); }
+.followup-form { display: grid; gap: 0.5rem; }
+.note-foot { display: flex; justify-content: space-between; align-items: center; }
+textarea { font: inherit; color: var(--fg); background: var(--surface); padding: 0.5rem 0.75rem; border: 2px solid var(--border); border-radius: 0.5rem; width: 100%; }
+
 /* People */
 .people { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
 .person-row {
