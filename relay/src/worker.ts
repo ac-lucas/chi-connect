@@ -45,9 +45,11 @@ export class RelayObject extends DurableObject<Env> {
 }
 
 // Per-isolate random salt: client keys can't be turned back into IP addresses, and change when the isolate restarts.
-const salt = crypto.getRandomValues(new Uint8Array(16)).join('.');
+// Made on first use: Workers don't allow random values at global scope.
+let salt: string | null = null;
 
 async function clientKey(ip: string): Promise<string> {
+  salt ??= crypto.getRandomValues(new Uint8Array(16)).join('.');
   const h = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${salt}|${ip}`)));
   return Array.from(h.slice(0, 12), (b) => b.toString(16).padStart(2, '0')).join('');
 }
