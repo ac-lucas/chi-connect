@@ -220,6 +220,9 @@ select { font: inherit; color: var(--fg); background: var(--surface); min-height
   .day-actions { grid-column: 2; flex-direction: row; align-items: center; }
 }
 
+.stack-tight > * { margin: 0 0 0.25rem; }
+.credit { font-size: 0.875rem; }
+
 /* People */
 .people { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
 .person-row {

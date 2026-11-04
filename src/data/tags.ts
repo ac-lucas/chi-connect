@@ -8,7 +8,7 @@ export interface KnownTag {
 }
 
 export const KNOWN_TAGS: readonly KnownTag[] = [
-  { id: 'accessibility', label: 'Accessibility', aliases: ['a11y', 'assistive technology', 'disability'] },
+  { id: 'accessibility', label: 'Accessibility', aliases: ['a11y', 'assistive technology', 'disability', 'accessible', 'blind', 'deaf'] },
   { id: 'ai', label: 'AI and interaction', aliases: ['artificial intelligence', 'machine learning', 'ml', 'llm', 'llms', 'generative ai', 'human ai interaction'] },
   { id: 'ar', label: 'Augmented reality', aliases: ['ar', 'mixed reality', 'mr', 'xr'] },
   { id: 'vr', label: 'Virtual reality', aliases: ['vr', 'immersive', 'metaverse'] },

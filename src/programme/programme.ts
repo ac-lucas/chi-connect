@@ -1,5 +1,7 @@
 import { knownTagById, normaliseTagText } from '../model/tags';
+import { isOver, shiftToAnchor } from './preview';
 import { makeSampleProgramme } from './sample';
+import type { FeedProgramme } from './transform';
 import type { Programme, ProgrammeSession } from './types';
 
 /** Local calendar day key, YYYY-MM-DD. */
@@ -19,12 +21,16 @@ export function programmeDays(p: Programme): number[] {
   return [...new Set(p.sessions.map((s) => startOfDay(s.start)))].sort((a, b) => a - b);
 }
 
-export function loadProgramme(sampleAnchor: number): Programme {
-  // The feed client replaces this when the programme feed is wired in.
-  return makeSampleProgramme(sampleAnchor);
+/**
+ * The programme to show: the feed's, if one has been downloaded, else the sample. A feed programme that is
+ * already over (last year's) is shown as a preview, its days moved to start on the anchor day.
+ */
+export function resolveProgramme(anchor: number, feed: FeedProgramme | undefined, now = Date.now()): Programme {
+  if (!feed || !feed.sessions.length) return makeSampleProgramme(anchor);
+  return isOver(feed, now) ? shiftToAnchor(feed, anchor, feed.timeZone) : feed;
 }
 
-const MAX_RESULTS = 40;
+export const MAX_RESULTS = 40;
 
 /** Search titles, rooms, formats and topics. Empty query lists the day's sessions. */
 export function searchSessions(p: Programme, query: string, day?: number): ProgrammeSession[] {

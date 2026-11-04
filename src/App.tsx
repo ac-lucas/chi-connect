@@ -14,9 +14,10 @@ import { PersonScreen } from './screens/PersonScreen';
 import { ProfileEditor } from './screens/ProfileEditor';
 import { TodayScreen } from './screens/TodayScreen';
 import { AddSessionsScreen } from './screens/AddSessionsScreen';
-import { loadProgramme } from './programme/programme';
+import { checkFeed, POLL_MS } from './programme/feed';
+import { resolveProgramme } from './programme/programme';
 import type { Programme } from './programme/types';
-import { getIntros, getProfile, getSampleAnchor, listConnections, putConnection, requestPersistentStorage, saveProfile, seedDemoOnce } from './storage/db';
+import { getIntros, getProfile, getSampleAnchor, getSetting, removeSampleSessions, setSetting, listConnections, putConnection, requestPersistentStorage, saveProfile, seedDemoOnce } from './storage/db';
 import { announce } from './ui/announce';
 import { Announcer } from './ui/Announcer';
 
@@ -60,7 +61,41 @@ export function App() {
   const [programme, setProgramme] = useState<Programme | null>(null);
 
   useEffect(() => {
-    void getSampleAnchor().then((anchor) => setProgramme(loadProgramme(anchor)));
+    // Show what's on the device straight away (sample, or the last downloaded programme), then keep it current:
+    // check the feed's version on open, when the app comes back to the front, and once a minute while visible.
+    let stopped = false;
+    let busy = false;
+    const show = async () => {
+      const anchor = await getSampleAnchor();
+      const feed = await getSetting('programmeFeed');
+      if (!stopped) setProgramme(resolveProgramme(anchor, feed));
+    };
+    const check = async () => {
+      if (busy || stopped || document.visibilityState !== 'visible') return;
+      busy = true;
+      try {
+        const held = await getSetting('programmeFeed');
+        const r = await checkFeed(held ? { edition: held.edition, revision: held.revision } : null, (await getSetting('feedCheckedAt')) ?? 0);
+        if (r.checked) await setSetting('feedCheckedAt', Date.now());
+        if (r.programme && r.programme.sessions.length) {
+          await setSetting('programmeFeed', r.programme);
+          if (!held) await removeSampleSessions();
+          await show();
+        }
+      } catch {
+        // Keep what we have; try again next time.
+      } finally {
+        busy = false;
+      }
+    };
+    void show().then(check);
+    const timer = setInterval(check, POLL_MS);
+    document.addEventListener('visibilitychange', check);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', check);
+    };
   }, []);
 
   const refreshConnections = () => listConnections().then(setConnections);

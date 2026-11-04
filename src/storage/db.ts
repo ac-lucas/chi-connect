@@ -14,6 +14,10 @@ export interface Settings {
   sampleAnchor: number;
   /** Auto-break suggestions the person skipped (keys from planDay). */
   skippedBreaks: string[];
+  /** The last programme downloaded from the feed, in the app's small shape. */
+  programmeFeed: import('../programme/transform').FeedProgramme;
+  /** When the feed was last asked about (so reloads don't poll faster than once a minute). */
+  feedCheckedAt: number;
 }
 
 interface PebbleSchema extends DBSchema {
@@ -184,6 +188,14 @@ export async function getSampleAnchor(now = Date.now()): Promise<number> {
 
 export async function listAllSchedule(): Promise<ScheduleItem[]> {
   return (await db()).getAllFromIndex('schedule', 'byStart');
+}
+
+/** Drop saved sessions from the sample programme once a real programme is in use. */
+export async function removeSampleSessions(): Promise<number> {
+  const d = await db();
+  const stale = (await d.getAll('schedule')).filter((s) => s.programmeSessionId?.startsWith('sample-'));
+  for (const s of stale) await d.delete('schedule', s.id);
+  return stale.length;
 }
 
 export async function skipBreak(key: string): Promise<void> {

@@ -13,7 +13,8 @@ export interface ProgrammeSession {
   /** Topic keys from the tag vocabulary (src/data/tags.ts), for matching with interests. */
   topics: string[];
   summary?: string;
-  paperUrl?: string;
+  /** Up to a few papers in the session with their DOI / ACM DL links (for Catch up later). */
+  papers?: { title: string; url: string }[];
 }
 
 export interface Programme {
@@ -21,6 +22,10 @@ export interface Programme {
   /** True for the made-up sample programme. Shown as such wherever it appears. */
   sample: boolean;
   sessions: ProgrammeSession[];
+  /** Set when the days were moved to start today for a preview (the original first day, local midnight). */
+  shiftedFrom?: number;
+  /** Licence credit to show wherever the programme appears. */
+  credit?: string;
 }
 
 export const FORMAT_LABELS: Record<SessionFormat, string> = {

@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from 'preact/hooks';
 import { randomId } from '../model/ids';
 import { knownTagById } from '../model/tags';
 import type { ScheduleItem } from '../model/types';
-import { dayLabel, overlaps, programmeDays, searchSessions, timeRange, timeRangeSpoken } from '../programme/programme';
+import { dayLabel, MAX_RESULTS, overlaps, programmeDays, searchSessions, timeRange, timeRangeSpoken } from '../programme/programme';
 import { FORMAT_LABELS, type Programme, type ProgrammeSession } from '../programme/types';
 import { deleteScheduleItem, listAllSchedule, putScheduleItem } from '../storage/db';
 import { announce } from '../ui/announce';
 import { useScreenHeading } from '../ui/useScreenHeading';
+import { ProgrammeNote } from './ProgrammeNote';
 
 interface Props {
   programme: Programme;
@@ -58,11 +59,7 @@ export function AddSessionsScreen({ programme, initialDay, onDone }: Props) {
         <h2 id="add-heading" ref={heading} tabIndex={-1}>
           Add sessions
         </h2>
-        {programme.sample && (
-          <p class="hint">
-            <span class="badge">Sample</span> Made-up sessions so you can try things out. The real programme replaces these.
-          </p>
-        )}
+        <ProgrammeNote programme={programme} />
       </div>
 
       <div class="segmented" role="group" aria-label="Day">
@@ -79,8 +76,9 @@ export function AddSessionsScreen({ programme, initialDay, onDone }: Props) {
       </div>
 
       <p class="visually-hidden" role="status">
-        {results.length === 0 ? 'No sessions match.' : `${results.length} sessions.`}
+        {results.length === 0 ? 'No sessions match.' : results.length >= MAX_RESULTS ? `Showing the first ${MAX_RESULTS}. Search to narrow it down.` : `${results.length} sessions.`}
       </p>
+      {results.length >= MAX_RESULTS && <p class="hint">Showing the first {MAX_RESULTS}, earliest first. Search to narrow it down.</p>}
       {results.length === 0 ? (
         <p class="muted">Nothing matches that on {dayLabel(day, 'long')}.</p>
       ) : (

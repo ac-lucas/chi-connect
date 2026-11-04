@@ -8,6 +8,7 @@ import { ENERGY, ENERGY_ORDER, energyToday } from '../schedule/energy';
 import { deleteScheduleItem, getSetting, listAllSchedule, putScheduleItem, setSetting, skipBreak } from '../storage/db';
 import { announce } from '../ui/announce';
 import { useScreenHeading } from '../ui/useScreenHeading';
+import { ProgrammeNote } from './ProgrammeNote';
 
 interface Props {
   name: string;
@@ -41,6 +42,9 @@ export function TodayScreen({ name, programme, onAddSessions }: Props) {
   const days = programmeDays(programme);
   const today = startOfDay(now);
   const [day, setDay] = useState(days.includes(today) ? today : (days[0] ?? today));
+  useEffect(() => {
+    if (!days.includes(day)) setDay(days.includes(today) ? today : (days[0] ?? today));
+  }, [programme]);
   const [items, setItems] = useState<ScheduleItem[]>([]);
   const [energySetting, setEnergySetting] = useState<EnergySetting | undefined>(undefined);
   const [skipped, setSkipped] = useState<string[]>([]);
@@ -53,9 +57,10 @@ export function TodayScreen({ name, programme, onAddSessions }: Props) {
     setEnergySetting(await getSetting('energy'));
     setSkipped((await getSetting('skippedBreaks')) ?? []);
   };
+  // Reload when the programme changes (for example the real feed replacing the sample).
   useEffect(() => {
     void refresh();
-  }, []);
+  }, [programme]);
 
   const { level, setToday } = energyToday(energySetting, now);
   const dayItems = items.filter((i) => i.start >= day && i.start < day + DAY_MS);
@@ -231,6 +236,8 @@ export function TodayScreen({ name, programme, onAddSessions }: Props) {
           Protect some time
         </button>
       </div>
+
+      {!programme.sample && <ProgrammeNote programme={programme} />}
 
       {protecting && (
         <ProtectForm
