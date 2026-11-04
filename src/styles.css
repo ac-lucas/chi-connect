@@ -1,28 +1,151 @@
-/* Accessibility baseline (ACC-3/4/5/7): contrast tokens, scalable text, visible focus, reduced motion. */
+/* Design tokens and accessibility baseline: contrast, scalable text, visible focus, reduced motion.
+   Contrast ratios are against --bg. Keep every pair at 4.5:1 or more for text, 3:1 for borders and focus. */
 :root {
-  --bg: #ffffff;
-  --fg: #14213d;          /* 15.9:1 on --bg */
-  --accent: #1d3557;      /* 12.1:1 on --bg */
-  --focus: #b45309;       /* >= 3:1 against --bg for the focus ring */
+  --bg: #fbfaf7;
+  --surface: #ffffff;
+  --fg: #172033;          /* ~15:1 */
+  --muted: #4a5568;       /* ~7:1 */
+  --accent: #1d4e5f;      /* ~8.7:1, deep teal */
+  --accent-fg: #ffffff;
+  --accent-soft: #e3f0ef;
+  --border: #7b8597;      /* ~3.6:1 */
+  --danger: #a12828;      /* ~7:1 */
+  --focus: #b45309;
+  --radius: 0.75rem;
+  --space: 1rem;
   --min-target: 44px;
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #0b1320; --fg: #f1f5f9; --accent: #9ec5fe; --focus: #fbbf24; }
+  :root {
+    --bg: #10161f;
+    --surface: #18212d;
+    --fg: #eef2f6;
+    --muted: #b8c2cf;
+    --accent: #8fd3c8;
+    --accent-fg: #0b1320;
+    --accent-soft: #1d3a3a;
+    --border: #6b7788;
+    --danger: #ff9b9b;
+    --focus: #fbbf24;
+  }
 }
+
 html { font-size: 100%; }
+*, *::before, *::after { box-sizing: border-box; }
 body {
   margin: 0;
   background: var(--bg);
   color: var(--fg);
-  font: 1rem/1.5 system-ui, sans-serif;
-  overflow-wrap: anywhere; /* ACC-8: long names and non-Latin text must not break layout */
+  font: 1rem/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  overflow-wrap: anywhere; /* long names and non-Latin text must not break layout */
 }
-header, main, footer { padding: 0.75rem 1rem; max-width: 40rem; margin: 0 auto; }
-a, button, input, select, textarea { min-height: var(--min-target); }
+h1, h2, h3 { line-height: 1.25; margin: 0 0 0.5rem; }
+h2 { font-size: 1.5rem; }
+h3 { font-size: 1.125rem; }
+p { margin: 0 0 0.75rem; }
+a { color: var(--accent); }
 :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+[tabindex='-1']:focus { outline: none; }
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
 .skip-link { position: absolute; left: -999px; }
-.skip-link:focus { left: 0.5rem; top: 0.5rem; background: var(--bg); padding: 0.5rem; z-index: 10; }
+.skip-link:focus { left: 0.5rem; top: 0.5rem; background: var(--surface); color: var(--fg); padding: 0.5rem; z-index: 10; }
+
+/* Layout */
+.app-header, main { padding: 0.75rem var(--space); max-width: 40rem; margin: 0 auto; }
+.app-header { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.app-name { font-size: 1.25rem; margin: 0; letter-spacing: 0.01em; }
+main { padding-bottom: 6rem; }
+.stack > * + * { margin-top: var(--space); }
+
+/* Bottom navigation. Becomes part of the page flow on short screens (large text, landscape). */
+.tabbar {
+  position: fixed; inset: auto 0 0 0;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.tabbar ul { display: flex; list-style: none; margin: 0 auto; padding: 0; max-width: 40rem; }
+.tabbar li { flex: 1; }
+.tabbar button {
+  width: 100%; min-height: 3.5rem;
+  background: none; border: 0; color: var(--muted);
+  font: inherit; font-size: 0.9375rem;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.125rem;
+  cursor: pointer;
+}
+.tabbar button[aria-current='page'] { color: var(--accent); font-weight: 700; text-decoration: underline; text-underline-offset: 0.3em; }
+.tabbar .glyph { font-size: 1.25rem; line-height: 1; }
+@media (max-height: 30rem) {
+  .tabbar { position: static; }
+  main { padding-bottom: 1rem; }
+}
+
+/* Cards and text */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space);
+}
+.muted { color: var(--muted); }
+.lede { font-size: 1.125rem; }
+
+/* Buttons */
+button, .button { font: inherit; }
+.button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+  min-height: var(--min-target); padding: 0.5rem 1.125rem;
+  border-radius: 999px; border: 2px solid var(--accent);
+  background: var(--accent); color: var(--accent-fg);
+  font-weight: 600; cursor: pointer; text-decoration: none;
+}
+.button.secondary { background: transparent; color: var(--accent); }
+.button.quiet { background: transparent; border-color: transparent; color: var(--accent); text-decoration: underline; }
+.button:disabled { opacity: 0.6; cursor: not-allowed; }
+.actions { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+
+/* Forms */
+.field { display: flex; flex-direction: column; gap: 0.25rem; }
+.field label, .field .label { font-weight: 600; }
+.hint { color: var(--muted); font-size: 0.9375rem; }
+.error { color: var(--danger); font-weight: 600; }
+.error::before { content: '⚠ '; }
+input[type='text'], input[type='url'], input[type='search'], textarea {
+  font: inherit; color: var(--fg); background: var(--surface);
+  min-height: var(--min-target); padding: 0.5rem 0.75rem;
+  border: 2px solid var(--border); border-radius: 0.5rem; width: 100%;
+}
+input[aria-invalid='true'] { border-color: var(--danger); }
+fieldset { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space); margin: 0; }
+legend { font-weight: 700; padding: 0 0.25rem; }
+.check { display: flex; align-items: center; gap: 0.75rem; min-height: var(--min-target); }
+.check input { width: 1.375rem; height: 1.375rem; accent-color: var(--accent); }
+
+/* Chips (topic tags). Selected state uses a tick and weight as well as colour. */
+.chips { display: flex; flex-wrap: wrap; gap: 0.5rem; list-style: none; margin: 0; padding: 0; }
+.chip {
+  display: inline-flex; align-items: center; gap: 0.375rem;
+  min-height: var(--min-target); padding: 0.375rem 0.875rem;
+  border-radius: 999px; border: 2px solid var(--border);
+  background: var(--surface); color: var(--fg);
+  font: inherit; cursor: pointer; text-align: left;
+}
+.chip[aria-pressed='true'], .chip.selected { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600; }
+.chip.static { cursor: default; }
+.chip .x { font-weight: 700; }
+
+/* Day rhythm legend */
+.rhythm { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+.rhythm li { display: flex; gap: 0.75rem; align-items: baseline; }
+.rhythm .glyph { font-size: 1.25rem; width: 1.5rem; text-align: center; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }

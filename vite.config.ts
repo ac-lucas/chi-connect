@@ -7,6 +7,13 @@ export default defineConfig({
   base: './',
   plugins: [
     preact(),
+    // The dev server injects CSS as inline <style> tags, which the strict CSP blocks.
+    // Allow inline styles in dev only; the production build links its CSS file and keeps the strict policy.
+    {
+      name: 'dev-only-csp',
+      apply: 'serve',
+      transformIndexHtml: (html: string) => html.replace("style-src 'self'", "style-src 'self' 'unsafe-inline'"),
+    },
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg', 'apple-touch-icon.png'],
