@@ -52,8 +52,9 @@ export interface PairKey {
   publicKey: string;
 }
 
-export async function newPairKey(): Promise<PairKey> {
-  const kp = await crypto.subtle.generateKey(P256, false, ['deriveBits']);
+/** `extractable` only for browsers that can't store a CryptoKey, so the key can be saved as JWK instead. */
+export async function newPairKey(extractable = false): Promise<PairKey> {
+  const kp = await crypto.subtle.generateKey(P256, extractable, ['deriveBits']);
   const raw = new Uint8Array(await crypto.subtle.exportKey('raw', kp.publicKey));
   return { privateKey: kp.privateKey, publicKey: toBase64Url(raw) };
 }
@@ -71,6 +72,11 @@ export async function importPublicKey(b64: string): Promise<CryptoKey> {
 }
 
 /** The two sides in a fixed order, so both phones build the same bytes. */
+/** Turn a private key saved as JWK back into a usable, non-extractable key. */
+export function importPrivateJwk(jwk: JsonWebKey): Promise<CryptoKey> {
+  return crypto.subtle.importKey('jwk', jwk, P256, false, ['deriveBits']);
+}
+
 function sorted(a: PairSide, b: PairSide): string {
   return [`${a.nonce}.${a.publicKey}`, `${b.nonce}.${b.publicKey}`].sort().join(':');
 }

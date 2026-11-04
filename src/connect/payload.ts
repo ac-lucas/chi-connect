@@ -1,7 +1,9 @@
 // Connect codes: what one phone shows as a QR code (or link) and another reads.
 // Format: a link with the data in the URL fragment, so no server ever receives it:
 //   <app url>#c=<code>
-// <code> is 'z' + base64url(deflate-raw(JSON)) when compression is available, else 'j' + base64url(JSON).
+// <code> is 'z' + base64url(deflate-raw(JSON)), or 'j' + base64url(JSON) for the uncompressed form.
+// Compression uses the browser's CompressionStream where it supports deflate-raw, and fflate (loaded only when
+// needed) where it doesn't, so every device can make and read both forms.
 // Everything decoded here is untrusted: size-limited, strictly parsed, and cleaned field by field.
 
 import { knownTagById, resolveTag } from '../model/tags';
@@ -75,8 +77,23 @@ function toWire(p: ConnectPayload): Wire {
   return w;
 }
 
+let compressOk: boolean | undefined;
+
+/**
+ * Whether deflate-raw compression works here. Checks the format too, not just that the API exists: a browser can
+ * have CompressionStream without 'deflate-raw' (verify per browser). Without it, fflate does the work.
+ */
 export function canCompress(): boolean {
-  return typeof CompressionStream !== 'undefined' && typeof DecompressionStream !== 'undefined';
+  if (compressOk === undefined) {
+    try {
+      new CompressionStream('deflate-raw');
+      new DecompressionStream('deflate-raw');
+      compressOk = true;
+    } catch {
+      compressOk = false;
+    }
+  }
+  return compressOk;
 }
 
 async function readCapped(stream: ReadableStream<Uint8Array>, max: number): Promise<Uint8Array> {
@@ -104,18 +121,47 @@ async function readCapped(stream: ReadableStream<Uint8Array>, max: number): Prom
 
 const streamOf = (bytes: Uint8Array) => new Blob([bytes as BlobPart]).stream();
 
-async function deflate(bytes: Uint8Array): Promise<Uint8Array> {
+async function deflate(bytes: Uint8Array, native = canCompress()): Promise<Uint8Array> {
+  if (!native) return (await import('fflate')).deflateSync(bytes, { level: 9 });
   return readCapped(streamOf(bytes).pipeThrough(new CompressionStream('deflate-raw')), MAX_JSON_BYTES);
 }
-async function inflate(bytes: Uint8Array): Promise<Uint8Array> {
-  return readCapped(streamOf(bytes).pipeThrough(new DecompressionStream('deflate-raw')), MAX_JSON_BYTES);
+
+async function inflate(bytes: Uint8Array, native = canCompress()): Promise<Uint8Array> {
+  if (native) return readCapped(streamOf(bytes).pipeThrough(new DecompressionStream('deflate-raw')), MAX_JSON_BYTES);
+  // Same cap as the native path: stop as soon as the output passes MAX_JSON_BYTES (compression bombs).
+  const { Inflate } = await import('fflate');
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  const inf = new Inflate((chunk) => {
+    total += chunk.byteLength;
+    if (total > MAX_JSON_BYTES) throw new DecodeError('too-long');
+    chunks.push(chunk);
+  });
+  inf.push(bytes, true);
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const c of chunks) {
+    out.set(c, at);
+    at += c.byteLength;
+  }
+  return out;
 }
 
-export async function encodeCode(p: ConnectPayload, compress = canCompress()): Promise<string> {
+/** Tests only: run the fflate path even where the browser has native compression. */
+export const fallbackForTests = {
+  deflate: (b: Uint8Array) => deflate(b, false),
+  inflate: (b: Uint8Array) => inflate(b, false),
+};
+
+export async function encodeCode(p: ConnectPayload, compress = true): Promise<string> {
   const json = enc.encode(JSON.stringify(toWire(p)));
   if (compress) {
-    const z = await deflate(json);
-    if (z.byteLength < json.byteLength) return `z${toBase64Url(z)}`;
+    try {
+      const z = await deflate(json);
+      if (z.byteLength < json.byteLength) return `z${toBase64Url(z)}`;
+    } catch {
+      // Compression failed on this device: the uncompressed form below always works.
+    }
   }
   return `j${toBase64Url(json)}`;
 }
@@ -131,7 +177,7 @@ export function linkFor(code: string, base: string): string {
 export async function fitLink(
   p: ConnectPayload,
   base: string,
-  compress = canCompress(),
+  compress = true,
 ): Promise<{ link: string; payload: ConnectPayload; leftOut: string[] }> {
   const profile: SharedProfile = { ...p.profile, links: [...(p.profile.links ?? [])], tags: [...(p.profile.tags ?? [])] };
   const leftOut: string[] = [];
@@ -170,10 +216,7 @@ export async function decodeCode(input: string, now = Date.now()): Promise<Conne
   let wire: Wire;
   try {
     let bytes = fromBase64Url(code.slice(1));
-    if (code[0] === 'z') {
-      if (!canCompress()) throw new DecodeError('unreadable');
-      bytes = await inflate(bytes);
-    }
+    if (code[0] === 'z') bytes = await inflate(bytes);
     if (bytes.byteLength > MAX_JSON_BYTES) throw new DecodeError('too-long');
     wire = JSON.parse(dec.decode(bytes)) as Wire;
   } catch (e) {

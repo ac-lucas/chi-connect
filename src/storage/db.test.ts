@@ -15,6 +15,7 @@ import {
   removeConnection,
   resetDatabaseForTests,
   saveProfile,
+  canStoreCryptoKeys,
   getIntros,
   saveIntros,
   seedDemoOnce,
@@ -52,6 +53,27 @@ describe('storage', () => {
     expect(back?.privateKey?.extractable).toBe(false);
     expect(back?.publicKey).toBe(intro.publicKey);
     await expect(crypto.subtle.exportKey('jwk', back!.privateKey!)).rejects.toThrow();
+  });
+
+  it('detects that keys can be stored here', async () => {
+    expect(await canStoreCryptoKeys()).toBe(true);
+  });
+
+  it("falls back to JWK where keys can't be stored, and the reloaded key still opens requests", async () => {
+    const { newIntro, introPayload, sendRequest, openHello } = await import('../relay/protocol');
+    const { SimulatedTransport } = await import('../relay/transport');
+    const intro = await newIntro(Date.now(), { exportable: true });
+    await saveIntros([intro]);
+    // What was written holds no CryptoKey, only the JWK.
+    const raw = (await getSetting('intros'))!;
+    expect(raw[0]!.privateKey).toBeUndefined();
+    expect(raw[0]!.privateJwk?.d).toBeTruthy();
+    const [back] = await getIntros();
+    expect(back!.privateKey!.extractable).toBe(false);
+    const relay = new SimulatedTransport();
+    await sendRequest(relay, introPayload({ displayName: 'Ana' }, intro), { displayName: 'Sam' });
+    const [msg] = (await relay.inbox([{ id: intro.mailboxId, token: intro.mailboxToken }]))[intro.mailboxId]!;
+    expect((await openHello(back!, msg!.ct))?.profile.displayName).toBe('Sam');
   });
 
   it('stores typed settings', async () => {

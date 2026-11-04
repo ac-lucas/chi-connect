@@ -35,6 +35,18 @@ export interface Transport {
 }
 
 const TIMEOUT_MS = 10_000;
+
+/**
+ * A signal that aborts after `ms`. AbortSignal.timeout is newer than the rest of what the app uses (missing on
+ * older iOS Safari: verify), so fall back to AbortController + setTimeout, or no timeout at all.
+ */
+export function timeoutSignal(ms: number): AbortSignal | undefined {
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') return AbortSignal.timeout(ms);
+  if (typeof AbortController === 'undefined') return undefined;
+  const c = new AbortController();
+  setTimeout(() => c.abort(), ms);
+  return c.signal;
+}
 const MAX_BOXES = 100;
 
 export class RelayTransport implements Transport {
@@ -48,7 +60,7 @@ export class RelayTransport implements Transport {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(TIMEOUT_MS),
+        signal: timeoutSignal(TIMEOUT_MS),
         credentials: 'omit',
         referrerPolicy: 'no-referrer',
       });

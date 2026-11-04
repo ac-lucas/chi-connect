@@ -5,7 +5,7 @@ import { toSharedProfile } from '../model/profile';
 import type { Intro, Profile } from '../model/types';
 import { createSixDigitCode, hasKeys, INTRO_KEEP_MS, introPayload, newIntro } from '../relay/protocol';
 import { RelayError, type Transport } from '../relay/transport';
-import { getIntros, saveIntros } from '../storage/db';
+import { canStoreCryptoKeys, getIntros, saveIntros } from '../storage/db';
 import { announce } from '../ui/announce';
 import { useScreenHeading } from '../ui/useScreenHeading';
 
@@ -17,7 +17,7 @@ async function currentIntro(relay: Transport, now = Date.now()): Promise<Intro> 
   const kept = (await getIntros()).filter((i) => hasKeys(i) && i.expiresAt + INTRO_KEEP_MS > now);
   let intro = kept.find((i) => i.expiresAt - now > REUSE_IF_MORE_THAN_MS);
   if (!intro) {
-    intro = await newIntro(now);
+    intro = await newIntro(now, { exportable: !(await canStoreCryptoKeys()) });
     kept.push(intro);
     // Claim the mailbox now so nobody else can, before any request arrives. Fine if offline: the first sync claims it.
     relay.claim({ id: intro.mailboxId, token: intro.mailboxToken }).catch(() => {});
@@ -41,16 +41,22 @@ export function ShareCodeScreen({ profile, relay, onDone }: Props) {
   const [now, setNow] = useState(Date.now());
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const [makeFailed, setMakeFailed] = useState(false);
 
   useEffect(() => {
     let live = true;
     void (async () => {
-      const intro = await currentIntro(relay);
-      const fitted = await fitLink(introPayload(toSharedProfile(profile), intro), location.href);
-      if (!live) return;
-      setLink(fitted.link);
-      setLeftOut(fitted.leftOut);
-      setExpiresAt(intro.expiresAt);
+      try {
+        const intro = await currentIntro(relay);
+        const fitted = await fitLink(introPayload(toSharedProfile(profile), intro), location.href);
+        if (!live) return;
+        setLink(fitted.link);
+        setLeftOut(fitted.leftOut);
+        setExpiresAt(intro.expiresAt);
+      } catch {
+        // Say so rather than "Making your code…" forever.
+        if (live) setMakeFailed(true);
+      }
     })();
     return () => {
       live = false;
@@ -93,14 +99,20 @@ export function ShareCodeScreen({ profile, relay, onDone }: Props) {
 
   async function shareLink() {
     if (!link) return;
-    try {
-      if (navigator.share) await navigator.share({ title: 'Connect with me on Pebble', url: link });
-      else {
-        await navigator.clipboard.writeText(link);
-        announce('Link copied.');
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'Connect with me on Pebble', url: link });
+        return;
+      } catch (e) {
+        if ((e as DOMException)?.name === 'AbortError') return; // they closed the share sheet
+        // Sharing refused or broken here: fall through to copying.
       }
+    }
+    try {
+      await navigator.clipboard.writeText(link);
+      announce('Link copied.');
     } catch {
-      // Share sheet closed, or copying blocked. Nothing to do.
+      announce('Couldn’t copy here. Select the link below and copy it.');
     }
   }
 
@@ -130,7 +142,20 @@ export function ShareCodeScreen({ profile, relay, onDone }: Props) {
               {'share' in navigator ? 'Share link' : 'Copy link'}
             </button>
           </div>
+          <details>
+            <summary>Show the link</summary>
+            <div class="stack details-body">
+              <label class="label" for="share-link">
+                Your link
+              </label>
+              <input id="share-link" type="text" readOnly value={link} onFocus={(e) => e.currentTarget.select()} />
+            </div>
+          </details>
         </div>
+      ) : makeFailed ? (
+        <p class="error" role="alert">
+          Couldn’t make your code on this device. Reload Pebble and try again.
+        </p>
       ) : (
         <p class="muted">Making your code…</p>
       )}

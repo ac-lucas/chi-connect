@@ -30,10 +30,16 @@ export async function newBox(): Promise<Box> {
   return { id: await mailboxIdFor(token), token };
 }
 
-export async function newIntro(now = Date.now()): Promise<Intro> {
+/**
+ * A new one-way code. `exportable` is for browsers that can't store a CryptoKey: the private key is then kept
+ * as JWK (see canStoreCryptoKeys in storage).
+ */
+export async function newIntro(now = Date.now(), { exportable = false } = {}): Promise<Intro> {
   const box = await newBox();
-  const key = await newPairKey();
+  const key = await newPairKey(exportable);
+  const privateJwk = exportable ? await crypto.subtle.exportKey('jwk', key.privateKey) : undefined;
   return {
+    ...(privateJwk ? { privateJwk } : {}),
     nonce: randomId(),
     publicKey: key.publicKey,
     privateKey: key.privateKey,

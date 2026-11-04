@@ -1,5 +1,6 @@
 // On-device storage (IndexedDB via idb). Nothing in here is sent anywhere.
 import { deleteDB, openDB, type DBSchema, type IDBPDatabase } from 'idb';
+import { importPrivateJwk } from '../connect/pairing';
 import type { CatchUpItem, Connection, EnergySetting, FollowUp, Intro, Invite, Note, Profile, ScheduleItem } from '../model/types';
 
 /** Typed key/value settings. Add new keys here. */
@@ -46,6 +47,7 @@ function db(): Promise<IDBPDatabase<PebbleSchema>> {
 export async function resetDatabaseForTests(name: string): Promise<void> {
   if (dbPromise) (await dbPromise).close();
   dbPromise = null;
+  keyStorage = null;
   dbName = name;
   await deleteDB(name);
 }
@@ -107,11 +109,52 @@ export async function deleteScheduleItem(id: string): Promise<void> {
 }
 
 // One-way codes we've shown
-export async function getIntros(): Promise<Intro[]> {
-  return (await getSetting('intros')) ?? [];
+
+let keyStorage: Promise<boolean> | null = null;
+
+/**
+ * Whether this browser can keep a CryptoKey in IndexedDB (expected in current browsers; verify per device).
+ * Checked once by storing and reading back a throwaway key. If not, intro keys are saved as JWK instead.
+ */
+export function canStoreCryptoKeys(): Promise<boolean> {
+  keyStorage ??= (async () => {
+    try {
+      const kp = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveBits']);
+      const d = await db();
+      await d.put('settings', kp.privateKey, 'keyProbe');
+      const back = (await d.get('settings', 'keyProbe')) as CryptoKey | undefined;
+      await d.delete('settings', 'keyProbe');
+      return !!back && typeof back === 'object' && 'algorithm' in back && back.type === 'private';
+    } catch {
+      return false;
+    }
+  })();
+  return keyStorage;
 }
+
+export async function getIntros(): Promise<Intro[]> {
+  const saved = (await getSetting('intros')) ?? [];
+  const out: Intro[] = [];
+  for (const i of saved) {
+    if (i.privateKey || !i.privateJwk) {
+      out.push(i);
+      continue;
+    }
+    try {
+      out.push({ ...i, privateKey: await importPrivateJwk(i.privateJwk) });
+    } catch {
+      // A damaged key can't open requests: leave this intro out.
+    }
+  }
+  return out;
+}
+
 export async function saveIntros(intros: Intro[]): Promise<void> {
-  await setSetting('intros', intros);
+  // An intro with a JWK copy is stored without its CryptoKey, so saving works where keys can't be stored.
+  await setSetting(
+    'intros',
+    intros.map((i) => (i.privateJwk ? { ...i, privateKey: undefined } : i)),
+  );
 }
 
 /** Add the demo connections once. Removing them later is respected: they are not re-added. */

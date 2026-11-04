@@ -171,6 +171,11 @@ export interface Intro {
    * this code. Intros saved before keys existed have neither field and are ignored.
    */
   privateKey?: CryptoKey;
+  /**
+   * Fallback for browsers that can't keep a CryptoKey in IndexedDB: the private key as JWK. Only stored when
+   * needed; turned back into a CryptoKey when loaded.
+   */
+  privateJwk?: JsonWebKey;
   mailboxId: string;
   mailboxToken: string;
   createdAt: number;

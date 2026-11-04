@@ -12,7 +12,9 @@ import {
   FACE_TO_FACE_TTL_MS,
   fitLink,
   linkFor,
+  fallbackForTests,
   MAX_CODE_CHARS,
+  MAX_JSON_BYTES,
   QR_BUDGET_BYTES,
   type ConnectPayload,
 } from './payload';
@@ -102,6 +104,18 @@ describe('decoding untrusted input', () => {
   });
   it('rejects codes from a newer version', () => expectProblem(raw({ ...good, v: 3 }), 'newer-version'));
   it('asks for an update on codes from before keys', () => expectProblem(raw({ ...good, v: 1 }), 'older-version'));
+  it('the fallback decompressor reads native output and refuses bombs too', async () => {
+    const json = new TextEncoder().encode(JSON.stringify(good));
+    const native = new Uint8Array(await new Response(new Blob([json]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer());
+    expect(await fallbackForTests.inflate(native)).toEqual(json);
+    const ours = await fallbackForTests.deflate(json);
+    const back = new Uint8Array(await new Response(new Blob([ours as BlobPart]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+    expect(back).toEqual(json);
+    const bomb = await fallbackForTests.deflate(new Uint8Array(MAX_JSON_BYTES * 50));
+    await expect(fallbackForTests.inflate(bomb)).rejects.toSatisfy((e: unknown) => e instanceof DecodeError && e.problem === 'too-long');
+    await expect(fallbackForTests.inflate(new Uint8Array([1, 2, 3, 4, 5]))).rejects.toThrow();
+  });
+
   it('rejects compression bombs', async () => {
     const huge = new TextEncoder().encode(JSON.stringify({ ...good, p: { d: 'Sam', r: 'a'.repeat(100_000) } }));
     const z = new Uint8Array(await new Response(new Blob([huge]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer());

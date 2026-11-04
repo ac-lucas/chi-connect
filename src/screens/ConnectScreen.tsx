@@ -59,6 +59,7 @@ export function ConnectScreen({ profile, initialCode, onOneWayCode, onConnected,
   const [pasted, setPasted] = useState('');
   const [copied, setCopied] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [makeFailed, setMakeFailed] = useState(false);
   const lastBad = useRef<string | null>(null);
   const theirsRef = useRef<ConnectPayload | null>(null);
   theirsRef.current = theirs;
@@ -70,6 +71,15 @@ export function ConnectScreen({ profile, initialCode, onOneWayCode, onConnected,
     let timer: ReturnType<typeof setTimeout> | undefined;
     let live = true;
     async function make() {
+      try {
+        await makeOnce();
+        setMakeFailed(false);
+      } catch {
+        // Missing or failing Web Crypto, or storage trouble: say so rather than "Making your code…" forever.
+        if (live) setMakeFailed(true);
+      }
+    }
+    async function makeOnce() {
       const box = await newBox();
       const key = await newPairKey();
       const payload: ConnectPayload = {
@@ -283,7 +293,14 @@ export function ConnectScreen({ profile, initialCode, onOneWayCode, onConnected,
           )}
 
           {view === 'show' ? (
-            myCode ?? <p class="muted">Making your code…</p>
+            myCode ??
+            (makeFailed ? (
+              <p class="error" role="alert">
+                Couldn’t make your code on this device. Reload Pebble and try again, or scan theirs instead.
+              </p>
+            ) : (
+              <p class="muted">Making your code…</p>
+            ))
           ) : (
             cryptoOk && (
             <div class="stack">
