@@ -15,6 +15,8 @@ import {
   removeConnection,
   resetDatabaseForTests,
   saveProfile,
+  getIntros,
+  saveIntros,
   seedDemoOnce,
   setSetting,
 } from './db';
@@ -40,6 +42,16 @@ describe('storage', () => {
     const p = createProfile({ ...emptyDraft(), displayName: 'Ana' });
     await saveProfile(p);
     expect(await getProfile()).toEqual(p);
+  });
+
+  it("keeps an intro's private key usable but unreadable after a reload", async () => {
+    const { newIntro } = await import('../relay/protocol');
+    const intro = await newIntro();
+    await saveIntros([intro]);
+    const [back] = await getIntros();
+    expect(back?.privateKey?.extractable).toBe(false);
+    expect(back?.publicKey).toBe(intro.publicKey);
+    await expect(crypto.subtle.exportKey('jwk', back!.privateKey!)).rejects.toThrow();
   });
 
   it('stores typed settings', async () => {

@@ -8,8 +8,10 @@ import { knownTagById, resolveTag } from '../model/tags';
 import { cleanText, cleanUrl, LIMITS } from '../model/text';
 import type { SharedProfile, Tag } from '../model/types';
 import { fromBase64Url, toBase64Url } from './base64url';
+import { importPublicKey, isPublicKeyText } from './pairing';
 
-export const PAYLOAD_VERSION = 1;
+/** v2 added the ECDH public key (k). v1 codes, from before that, are refused with 'older-version'. */
+export const PAYLOAD_VERSION = 2;
 /** Keep the whole link at or under this many bytes so the QR stays easy to scan. */
 export const QR_BUDGET_BYTES = 800;
 /** Refuse inbound codes longer than this before doing any work on them. */
@@ -25,8 +27,10 @@ export type ConnectMode = 'f' | 'r'; // face-to-face, regular one-way
 
 export interface ConnectPayload {
   mode: ConnectMode;
-  /** Random per showing of the code. Both nonces together make the pair's secret. */
+  /** Random per showing of the code. */
   nonce: string;
+  /** P-256 public key for this code (base64url). The matching private key stays on the phone that showed it. */
+  publicKey: string;
   expiresAt: number;
   /** Where the other person can leave messages for this person (relay). */
   mailboxId?: string;
@@ -37,12 +41,13 @@ interface Wire {
   v: number;
   m: ConnectMode;
   n: string;
+  k: string;
   x: number; // expiry, epoch seconds
   b?: string;
   p: { d: string; r?: string; c?: string; l?: string[]; t?: string[] };
 }
 
-export type DecodeProblem = 'too-long' | 'not-a-code' | 'unreadable' | 'newer-version' | 'expired';
+export type DecodeProblem = 'too-long' | 'not-a-code' | 'unreadable' | 'newer-version' | 'older-version' | 'expired';
 
 export class DecodeError extends Error {
   constructor(readonly problem: DecodeProblem) {
@@ -61,7 +66,7 @@ function tagFromWire(s: string): Tag | null {
 }
 
 function toWire(p: ConnectPayload): Wire {
-  const w: Wire = { v: PAYLOAD_VERSION, m: p.mode, n: p.nonce, x: Math.floor(p.expiresAt / 1000), p: { d: p.profile.displayName } };
+  const w: Wire = { v: PAYLOAD_VERSION, m: p.mode, n: p.nonce, k: p.publicKey, x: Math.floor(p.expiresAt / 1000), p: { d: p.profile.displayName } };
   if (p.mailboxId) w.b = p.mailboxId;
   if (p.profile.role) w.p.r = p.profile.role;
   if (p.profile.company) w.p.c = p.profile.company;
@@ -178,9 +183,16 @@ export async function decodeCode(input: string, now = Date.now()): Promise<Conne
 
   if (!wire || typeof wire !== 'object' || typeof wire.v !== 'number') throw new DecodeError('unreadable');
   if (wire.v > PAYLOAD_VERSION) throw new DecodeError('newer-version');
+  if (wire.v === 1) throw new DecodeError('older-version');
   if (wire.v !== PAYLOAD_VERSION) throw new DecodeError('unreadable');
   if (wire.m !== 'f' && wire.m !== 'r') throw new DecodeError('unreadable');
   if (!str(wire.n) || !ID.test(wire.n)) throw new DecodeError('unreadable');
+  if (!isPublicKeyText(wire.k)) throw new DecodeError('unreadable');
+  try {
+    await importPublicKey(wire.k); // a valid point on the curve, or nothing
+  } catch {
+    throw new DecodeError('unreadable');
+  }
   if (wire.b !== undefined && (!str(wire.b) || !ID.test(wire.b))) throw new DecodeError('unreadable');
   if (typeof wire.x !== 'number' || !Number.isFinite(wire.x)) throw new DecodeError('unreadable');
   const expiresAt = wire.x * 1000;
@@ -220,7 +232,7 @@ export async function decodeCode(input: string, now = Date.now()): Promise<Conne
     if (tags.length) profile.tags = tags;
   }
 
-  const out: ConnectPayload = { mode: wire.m, nonce: wire.n, expiresAt, profile };
+  const out: ConnectPayload = { mode: wire.m, nonce: wire.n, publicKey: wire.k, expiresAt, profile };
   if (wire.b) out.mailboxId = wire.b;
   return out;
 }

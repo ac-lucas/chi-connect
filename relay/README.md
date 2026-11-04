@@ -10,7 +10,9 @@ A small message relay so two phones can reach each other when they are not side 
 
 Rate limiting uses a salted hash of the client IP address, made inside the relay's single Durable Object with a random salt held only in memory, and kept only for the length of the limit window. IP addresses are not written to storage. Request logging is switched off in `wrangler.toml` (verify the platform's own logs and retention).
 
-The relay cannot read messages: they are AES-GCM encrypted on the phone with keys only the two people hold. Pairing-code payloads are encrypted with a key derived from the six-digit code, which protects them from casual reading but not from the relay operator (a six-digit code is easy to brute force). A password-authenticated key exchange would close that gap later.
+The relay cannot read messages: they are AES-GCM encrypted on the phone with keys from an ECDH (P-256) exchange, so only the two phones hold them. Every code a phone shows carries a fresh public key; the private key never leaves the phone. Requests are sealed to the key in the code they answer, so neither the relay nor anyone who saw that code can open them.
+
+Six-digit codes are the weak spot. The payload behind a code is encrypted with a key derived from the code, which keeps it from casual reading but not from whoever runs the relay (six digits are easy to brute force). That payload is the same public information a QR code shows, but someone running the relay could swap in their own key and stand in the middle of that one request. A password-authenticated key exchange would close that gap later. QR codes and links don't have this problem.
 
 ## API (JSON over HTTPS, version 1)
 

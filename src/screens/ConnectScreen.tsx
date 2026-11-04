@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { hasWebCrypto, matchWord, pairSecret, type MatchWord } from '../connect/pairing';
+import { hasWebCrypto, matchWord, newPairKey, pairSecret, type MatchWord, type PairKey } from '../connect/pairing';
 import { decodeCode, DecodeError, FACE_TO_FACE_TTL_MS, fitLink, type ConnectPayload, type DecodeProblem } from '../connect/payload';
 import { QrCode } from '../connect/QrCode';
 import { QrScanner } from '../connect/QrScanner';
@@ -28,6 +28,8 @@ interface Mine {
   payload: ConnectPayload;
   /** Our mailbox for this connection; the token proves it's ours to the relay. */
   box: Box;
+  /** This code's key pair. Kept in memory only; a new one comes with every new code. */
+  key: PairKey;
   link: string;
   leftOut: string[];
 }
@@ -37,6 +39,7 @@ const PROBLEMS: Record<DecodeProblem | 'own' | 'regular', string> = {
   'not-a-code': 'That isn’t a Pebble code.',
   unreadable: 'Couldn’t read that code. Ask them to open a fresh one.',
   'newer-version': 'Their app is a newer version. Reload this page and try again.',
+  'older-version': 'Their app needs an update. Ask them to reload Pebble, then show a fresh code.',
   expired: 'That code has expired. Ask them to open a fresh one.',
   own: 'That’s your own code. Scan theirs instead.',
   regular: 'That code is for connecting at a distance, which isn’t switched on yet. Try face to face.',
@@ -68,16 +71,18 @@ export function ConnectScreen({ profile, initialCode, onOneWayCode, onConnected,
     let live = true;
     async function make() {
       const box = await newBox();
+      const key = await newPairKey();
       const payload: ConnectPayload = {
         mode: 'f',
         nonce: randomId(),
+        publicKey: key.publicKey,
         mailboxId: box.id,
         expiresAt: Date.now() + FACE_TO_FACE_TTL_MS,
         profile: toSharedProfile(profile),
       };
       const next = await fitLink(payload, appBase());
       if (!live) return;
-      setMine({ ...next, box });
+      setMine({ ...next, box, key });
       timer = setTimeout(function due() {
         // Don't refresh while theirs is on screen, or the match word would change under them.
         // Check again shortly, so "Different word" never leaves an expired code on show.
@@ -106,7 +111,7 @@ export function ConnectScreen({ profile, initialCode, onOneWayCode, onConnected,
       lastBad.current = null;
       setProblem(null);
       setTheirs(p);
-      setMatch(await matchWord(mine.payload.nonce, p.nonce));
+      setMatch(await matchWord(mine.payload, p));
       announce(`Got ${p.profile.displayName}’s code.`);
       setTimeout(() => resultHeading.current?.focus(), 0);
       return true;
@@ -142,7 +147,7 @@ export function ConnectScreen({ profile, initialCode, onOneWayCode, onConnected,
         myMailboxId: mine.box.id,
         myMailboxToken: mine.box.token,
         via: 'face-to-face',
-        sharedSecret: await pairSecret(mine.payload.nonce, theirs.nonce),
+        sharedSecret: await pairSecret(mine.key.privateKey, mine.payload, theirs),
         scheduleSharing: false,
         sharedSessionIds: [],
         demo: false,

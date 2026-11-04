@@ -4,6 +4,7 @@ import { resolveTag } from '../model/tags';
 import { LIMITS } from '../model/text';
 import type { SharedProfile } from '../model/types';
 import { toBase64Url } from './base64url';
+import { newPairKey } from './pairing';
 import {
   decodeCode,
   DecodeError,
@@ -17,10 +18,11 @@ import {
 } from './payload';
 
 const BASE = 'https://example.github.io/some-app/';
+const KEY = (await newPairKey()).publicKey;
 const NOW = 1_800_000_000_000;
 
 function payload(profile: SharedProfile): ConnectPayload {
-  return { mode: 'f', nonce: randomId(), mailboxId: randomId(), expiresAt: NOW + FACE_TO_FACE_TTL_MS, profile };
+  return { mode: 'f', nonce: randomId(), publicKey: KEY, mailboxId: randomId(), expiresAt: NOW + FACE_TO_FACE_TTL_MS, profile };
 }
 
 const typical: SharedProfile = {
@@ -74,7 +76,7 @@ describe('decoding untrusted input', () => {
     await expect(decodeCode(input, now)).rejects.toSatisfy((e: unknown) => e instanceof DecodeError && e.problem === problem);
   };
   const raw = (obj: unknown) => `j${toBase64Url(new TextEncoder().encode(JSON.stringify(obj)))}`;
-  const good = { v: 1, m: 'f', n: randomId(), x: Math.floor((NOW + 60_000) / 1000), p: { d: 'Sam' } };
+  const good = { v: 2, m: 'f', n: randomId(), k: KEY, x: Math.floor((NOW + 60_000) / 1000), p: { d: 'Sam' } };
 
   it('rejects oversized input before decoding', () => expectProblem('j' + 'A'.repeat(MAX_CODE_CHARS), 'too-long'));
   it('rejects things that are not codes', async () => {
@@ -90,12 +92,16 @@ describe('decoding untrusted input', () => {
     await expectProblem(raw({ ...good, m: 'x' }), 'unreadable');
     await expectProblem(raw({ ...good, p: { d: '   ' } }), 'unreadable');
     await expectProblem(raw({ ...good, x: 'soon' }), 'unreadable');
+    await expectProblem(raw({ ...good, k: undefined }), 'unreadable');
+    await expectProblem(raw({ ...good, k: 'A'.repeat(87) }), 'unreadable'); // not a point on the curve
+    await expectProblem(raw({ ...good, k: KEY.slice(1) }), 'unreadable');
   });
   it('rejects expired codes and far-future expiry', async () => {
     await expectProblem(raw({ ...good, x: Math.floor((NOW - 1000) / 1000) }), 'expired');
     await expectProblem(raw({ ...good, x: Math.floor((NOW + 7 * 86_400_000) / 1000) }), 'unreadable');
   });
-  it('rejects codes from a newer version', () => expectProblem(raw({ ...good, v: 2 }), 'newer-version'));
+  it('rejects codes from a newer version', () => expectProblem(raw({ ...good, v: 3 }), 'newer-version'));
+  it('asks for an update on codes from before keys', () => expectProblem(raw({ ...good, v: 1 }), 'older-version'));
   it('rejects compression bombs', async () => {
     const huge = new TextEncoder().encode(JSON.stringify({ ...good, p: { d: 'Sam', r: 'a'.repeat(100_000) } }));
     const z = new Uint8Array(await new Response(new Blob([huge]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer());

@@ -164,6 +164,13 @@ export interface EnergySetting {
 /** A one-way connect code we've shown (QR, link or six-digit code). Requests to it arrive in its mailbox. */
 export interface Intro {
   nonce: string;
+  /** This code's P-256 public key (base64url), shown in the code. */
+  publicKey?: string;
+  /**
+   * The matching private key: non-extractable, stored as a CryptoKey in IndexedDB, used to open requests sent to
+   * this code. Intros saved before keys existed have neither field and are ignored.
+   */
+  privateKey?: CryptoKey;
   mailboxId: string;
   mailboxToken: string;
   createdAt: number;

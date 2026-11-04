@@ -3,7 +3,7 @@ import { extractCode, fitLink } from '../connect/payload';
 import { QrCode } from '../connect/QrCode';
 import { toSharedProfile } from '../model/profile';
 import type { Intro, Profile } from '../model/types';
-import { createSixDigitCode, INTRO_KEEP_MS, introPayload, newIntro } from '../relay/protocol';
+import { createSixDigitCode, hasKeys, INTRO_KEEP_MS, introPayload, newIntro } from '../relay/protocol';
 import { RelayError, type Transport } from '../relay/transport';
 import { getIntros, saveIntros } from '../storage/db';
 import { announce } from '../ui/announce';
@@ -13,7 +13,8 @@ const REUSE_IF_MORE_THAN_MS = 2 * 60 * 60 * 1000;
 
 /** Reuse a recent one-way code if it has a good while left; otherwise make a new one. */
 async function currentIntro(relay: Transport, now = Date.now()): Promise<Intro> {
-  const kept = (await getIntros()).filter((i) => i.expiresAt + INTRO_KEEP_MS > now);
+  // Intros from before codes carried keys can't open requests any more, so they are dropped here.
+  const kept = (await getIntros()).filter((i) => hasKeys(i) && i.expiresAt + INTRO_KEEP_MS > now);
   let intro = kept.find((i) => i.expiresAt - now > REUSE_IF_MORE_THAN_MS);
   if (!intro) {
     intro = await newIntro(now);

@@ -38,7 +38,7 @@ async function hkdfKey(secret: Uint8Array, info: string): Promise<CryptoKey> {
   );
 }
 
-/** Key for messages into `mailboxId`, from a base64url secret (a pair secret or an intro nonce). */
+/** Key for messages into `mailboxId`, from a base64url secret (a pair secret or a hello secret, both from ECDH). */
 export function mailboxKey(secretB64: string, purpose: KeyPurpose, mailboxId: string): Promise<CryptoKey> {
   return hkdfKey(fromBase64Url(secretB64), `${purpose}|${mailboxId}`);
 }

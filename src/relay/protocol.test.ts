@@ -7,11 +7,13 @@ import {
   createSixDigitCode,
   introPayload,
   newIntro,
+  openHello,
   redeemSixDigitCode,
   sendRequest,
   syncOnce,
   type SyncStore,
 } from './protocol';
+import { newPairKey } from '../connect/pairing';
 import { SimulatedTransport } from './transport';
 
 class Device implements SyncStore {
@@ -106,6 +108,38 @@ describe('one-way connect through the relay', () => {
     a.saved.clear(); // A declines: the request is just deleted on A's phone
     expect((await syncOnce(relay, b)).accepted).toEqual([]);
     expect(b.only().state).toBe('pending-sent');
+  });
+});
+
+describe('keys', () => {
+  it('only the person who showed the code can open a request to it', async () => {
+    const relay = new SimulatedTransport();
+    const intro = await newIntro();
+    await sendRequest(relay, introPayload(ana, intro), sam);
+    const [msg] = (await relay.inbox([{ id: intro.mailboxId, token: intro.mailboxToken }]))[intro.mailboxId]!;
+    // Someone who saw the code has its nonce and public key, but not its private key.
+    const lookalike = { ...(await newIntro()), nonce: intro.nonce, publicKey: intro.publicKey, mailboxId: intro.mailboxId };
+    expect(await openHello(lookalike, msg!.ct)).toBeNull();
+    expect((await openHello(intro, msg!.ct))?.profile.displayName).toBe('Sam');
+  });
+
+  it('refuses a request whose inner code carries a different key than it was sealed with', async () => {
+    const intro = await newIntro();
+    const relay = new SimulatedTransport();
+    // Sam seals the hello properly, then someone swaps the clear key prefix for another valid key.
+    await sendRequest(relay, introPayload(ana, intro), sam);
+    const [msg] = (await relay.inbox([{ id: intro.mailboxId, token: intro.mailboxToken }]))[intro.mailboxId]!;
+    const other = (await newPairKey()).publicKey;
+    expect(await openHello(intro, other + msg!.ct.slice(other.length))).toBeNull();
+  });
+
+  it('skips intros saved before codes carried keys', async () => {
+    const relay = new SimulatedTransport();
+    const a = new Device(ana);
+    const { publicKey: _p, privateKey: _k, ...old } = await newIntro();
+    a.introList.push(old);
+    await relay.send(old.mailboxId, 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', 60);
+    expect((await syncOnce(relay, a)).newRequests).toEqual([]);
   });
 });
 

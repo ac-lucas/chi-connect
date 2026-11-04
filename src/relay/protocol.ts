@@ -1,18 +1,19 @@
 // One-way connecting through the relay (F01 QR, F02 six-digit code, F03 link).
 //
-//  A shows a code: an "intro" with a fresh nonce and its own mailbox.
+//  A shows a code: an "intro" with a fresh nonce, a P-256 public key and its own mailbox. A keeps the private key.
 //  B reads it, sees A's profile and taps "Send request":
-//    B makes a nonce and a mailbox for this connection, and sends a "hello" to A's intro mailbox,
-//    encrypted with a key from A's nonce (only people who read A's code have it). B is now "pending-sent".
+//    B makes a nonce, a key pair and a mailbox for this connection, and sends a "hello" to A's intro mailbox:
+//    B's public key in the clear, then B's own code sealed with a key from ECDH(B's private key, A's public key).
+//    Only A can open it: not people who saw A's code, and not the relay. B is now "pending-sent".
 //  A's phone finds the hello, opens it, and shows a request (pending-received). Nothing is sent back yet.
 //  If A approves: A makes its own mailbox for this connection and sends "accept" to B's mailbox,
-//    encrypted with the pair secret (from both nonces). Both are now "connected".
+//    encrypted with the pair secret (ECDH of the two keys, bound to both codes). Both are now "connected".
 //  If A ignores or declines, nothing is sent. B is never told (quiet by default).
 
 import { randomId } from '../model/ids';
 import type { Connection, Intro, SharedProfile } from '../model/types';
 import { decodeCode, encodeCode, type ConnectPayload } from '../connect/payload';
-import { pairSecret } from '../connect/pairing';
+import { helloSecret, isPublicKeyText, newPairKey, pairSecret, PUBLIC_KEY_CHARS } from '../connect/pairing';
 import { codeKey, mailboxIdFor, mailboxKey, open, seal } from './crypto';
 import type { Box, Transport } from './transport';
 
@@ -31,22 +32,43 @@ export async function newBox(): Promise<Box> {
 
 export async function newIntro(now = Date.now()): Promise<Intro> {
   const box = await newBox();
-  return { nonce: randomId(), mailboxId: box.id, mailboxToken: box.token, createdAt: now, expiresAt: now + INTRO_TTL_MS };
+  const key = await newPairKey();
+  return {
+    nonce: randomId(),
+    publicKey: key.publicKey,
+    privateKey: key.privateKey,
+    mailboxId: box.id,
+    mailboxToken: box.token,
+    createdAt: now,
+    expiresAt: now + INTRO_TTL_MS,
+  };
+}
+
+/** An intro we can still use: made with a key pair (older ones, from before keys existed, can't open requests). */
+export function hasKeys(i: Intro): i is Intro & { publicKey: string; privateKey: CryptoKey } {
+  return !!i.publicKey && !!i.privateKey;
 }
 
 export function introPayload(profile: SharedProfile, intro: Intro): ConnectPayload {
-  return { mode: 'r', nonce: intro.nonce, mailboxId: intro.mailboxId, expiresAt: intro.expiresAt, profile };
+  if (!hasKeys(intro)) throw new Error('intro-without-key');
+  return { mode: 'r', nonce: intro.nonce, publicKey: intro.publicKey, mailboxId: intro.mailboxId, expiresAt: intro.expiresAt, profile };
 }
+
+const HELLO_VERSION = 2;
 
 /** B: send a request to the person whose one-way code we read. Returns our pending connection. */
 export async function sendRequest(t: Transport, theirs: ConnectPayload, me: SharedProfile, now = Date.now()): Promise<Connection> {
   if (theirs.mode !== 'r' || !theirs.mailboxId) throw new Error('not-a-request-code');
   const nonce = randomId();
+  const key = await newPairKey();
   const box = await newBox();
   await t.claim(box);
-  const myCode = await encodeCode({ mode: 'r', nonce, mailboxId: box.id, expiresAt: now + INTRO_TTL_MS, profile: me });
-  const hello = await seal(await mailboxKey(theirs.nonce, 'hello', theirs.mailboxId), { t: 'hello', v: 1, code: myCode }, theirs.mailboxId);
-  await t.send(theirs.mailboxId, hello, MESSAGE_TTL_S);
+  const mine = { mode: 'r' as const, nonce, publicKey: key.publicKey, mailboxId: box.id, expiresAt: now + INTRO_TTL_MS, profile: me };
+  const myCode = await encodeCode(mine);
+  const hs = await helloSecret(key.privateKey, theirs, key.publicKey, theirs.publicKey);
+  const sealed = await seal(await mailboxKey(hs, 'hello', theirs.mailboxId), { t: 'hello', v: HELLO_VERSION, code: myCode }, theirs.mailboxId);
+  // Our public key goes first, in the clear: A needs it to work out the key that opens the rest.
+  await t.send(theirs.mailboxId, key.publicKey + sealed, MESSAGE_TTL_S);
   return {
     id: randomId(),
     profile: theirs.profile,
@@ -55,7 +77,8 @@ export async function sendRequest(t: Transport, theirs: ConnectPayload, me: Shar
     myMailboxId: box.id,
     myMailboxToken: box.token,
     theirNonce: theirs.nonce,
-    sharedSecret: await pairSecret(nonce, theirs.nonce),
+    // The private key is used once, here, and then dropped: later messages use the pair secret.
+    sharedSecret: await pairSecret(key.privateKey, mine, theirs),
     via: 'request',
     scheduleSharing: false,
     sharedSessionIds: [],
@@ -69,19 +92,29 @@ export async function sendRequest(t: Transport, theirs: ConnectPayload, me: Shar
  * still waiting on the relay (up to a day) isn't dropped just because the code inside has since expired.
  */
 export async function openHello(intro: Intro, ct: string, now = Date.now(), sentAt = now): Promise<Connection | null> {
-  const msg = (await open(await mailboxKey(intro.nonce, 'hello', intro.mailboxId), ct, intro.mailboxId)) as {
+  if (!hasKeys(intro) || ct.length <= PUBLIC_KEY_CHARS) return null;
+  const senderKey = ct.slice(0, PUBLIC_KEY_CHARS);
+  if (!isPublicKeyText(senderKey)) return null;
+  let hs: string;
+  try {
+    hs = await helloSecret(intro.privateKey, intro, senderKey, senderKey);
+  } catch {
+    return null; // not a valid public key
+  }
+  const msg = (await open(await mailboxKey(hs, 'hello', intro.mailboxId), ct.slice(PUBLIC_KEY_CHARS), intro.mailboxId)) as {
     t?: unknown;
     v?: unknown;
     code?: unknown;
   } | null;
-  if (!msg || msg.t !== 'hello' || msg.v !== 1 || typeof msg.code !== 'string') return null;
+  if (!msg || msg.t !== 'hello' || msg.v !== HELLO_VERSION || typeof msg.code !== 'string') return null;
   let theirs: ConnectPayload;
   try {
     theirs = await decodeCode(msg.code, Math.min(sentAt, now));
   } catch {
     return null;
   }
-  if (theirs.mode !== 'r' || !theirs.mailboxId || theirs.nonce === intro.nonce) return null;
+  // The key inside must be the one the hello was sealed with, so nobody can wrap someone else's code.
+  if (theirs.mode !== 'r' || !theirs.mailboxId || theirs.nonce === intro.nonce || theirs.publicKey !== senderKey) return null;
   return {
     id: randomId(),
     profile: theirs.profile,
@@ -89,7 +122,7 @@ export async function openHello(intro: Intro, ct: string, now = Date.now(), sent
     requestedAt: now,
     mailboxId: theirs.mailboxId,
     theirNonce: theirs.nonce,
-    sharedSecret: await pairSecret(intro.nonce, theirs.nonce),
+    sharedSecret: await pairSecret(intro.privateKey, intro, theirs),
     via: 'request',
     scheduleSharing: false,
     sharedSessionIds: [],
@@ -141,7 +174,7 @@ export interface SyncResult {
 
 /** Fetch every mailbox we own, apply what arrived, and clear handled or unreadable messages from the relay. */
 export async function syncOnce(t: Transport, store: SyncStore, now = Date.now()): Promise<SyncResult> {
-  const intros = (await store.intros()).filter((i) => i.expiresAt + INTRO_KEEP_MS > now);
+  const intros = (await store.intros()).filter((i) => hasKeys(i) && i.expiresAt + INTRO_KEEP_MS > now);
   const conns = await store.connections();
   const owned = conns.filter((c) => c.myMailboxId && c.myMailboxToken && !c.demo);
   const boxes: Box[] = [
