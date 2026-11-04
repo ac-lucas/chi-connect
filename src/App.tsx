@@ -1,13 +1,19 @@
 import { useEffect, useState } from 'preact/hooks';
+import type { ConnectPayload } from './connect/payload';
+import { syncOnce } from './relay/protocol';
+import { relayFromEnv } from './relay/transport';
 import { createProfile, draftFromProfile, emptyDraft, updateProfile, type ProfileDraft } from './model/profile';
 import type { Connection, Profile } from './model/types';
 import { ConnectScreen } from './screens/ConnectScreen';
+import { EnterCodeScreen } from './screens/EnterCodeScreen';
+import { RequestScreen } from './screens/RequestScreen';
+import { ShareCodeScreen } from './screens/ShareCodeScreen';
 import { MeScreen } from './screens/MeScreen';
 import { PeopleScreen } from './screens/PeopleScreen';
 import { PersonScreen } from './screens/PersonScreen';
 import { ProfileEditor } from './screens/ProfileEditor';
 import { TodayScreen } from './screens/TodayScreen';
-import { getProfile, listConnections, requestPersistentStorage, saveProfile, seedDemoOnce } from './storage/db';
+import { getIntros, getProfile, listConnections, putConnection, requestPersistentStorage, saveProfile, seedDemoOnce } from './storage/db';
 import { announce } from './ui/announce';
 import { Announcer } from './ui/Announcer';
 
@@ -16,7 +22,14 @@ type Screen =
   | { kind: 'tabs' }
   | { kind: 'edit' }
   | { kind: 'connect'; code?: string }
+  | { kind: 'share' }
+  | { kind: 'enter-code' }
+  | { kind: 'request'; theirs: ConnectPayload }
   | { kind: 'person'; id: string; justConnected?: boolean };
+
+/** The relay for this build, or null (then one-way connecting is hidden). */
+const relay = relayFromEnv();
+const SYNC_EVERY_MS = 60_000;
 
 const TABS: { id: Tab; label: string; glyph: string }[] = [
   { id: 'today', label: 'Today', glyph: '◷' },
@@ -60,6 +73,34 @@ export function App() {
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
+
+  // Check the relay for requests and replies: on open, when the app comes back to the front, and every minute while visible.
+  const hasProfile = !!profile;
+  useEffect(() => {
+    if (!relay || !hasProfile) return;
+    let running = false;
+    const run = async () => {
+      if (running || document.visibilityState !== 'visible') return;
+      running = true;
+      try {
+        const r = await syncOnce(relay, { intros: getIntros, connections: listConnections, put: putConnection });
+        if (r.newRequests.length || r.accepted.length) await refreshConnections();
+        for (const c of r.newRequests) announce(`${c.profile.displayName} would like to connect.`);
+        for (const c of r.accepted) announce(`${c.profile.displayName} said yes. You’re connected.`);
+      } catch {
+        // Offline or the relay is busy: try again next time.
+      } finally {
+        running = false;
+      }
+    };
+    void run();
+    const timer = setInterval(run, SYNC_EVERY_MS);
+    document.addEventListener('visibilitychange', run);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', run);
+    };
+  }, [hasProfile]);
 
   // A code from a link opens the connect screen once there is a profile to connect with.
   useEffect(() => {
@@ -116,11 +157,30 @@ export function App() {
       <ConnectScreen
         profile={profile}
         initialCode={screen.code}
+        onOneWayCode={relay ? (theirs) => setScreen({ kind: 'request', theirs }) : undefined}
         onCancel={() => goTab('people')}
         onConnected={async (id) => {
           await refreshConnections();
           setTab('people');
           setScreen({ kind: 'person', id, justConnected: true });
+        }}
+      />
+    );
+  } else if (screen.kind === 'share' && relay) {
+    body = <ShareCodeScreen profile={profile} relay={relay} onDone={() => goTab('people')} />;
+  } else if (screen.kind === 'enter-code' && relay) {
+    body = <EnterCodeScreen relay={relay} onFound={(theirs) => setScreen({ kind: 'request', theirs })} onCancel={() => goTab('people')} />;
+  } else if (screen.kind === 'request' && relay) {
+    body = (
+      <RequestScreen
+        profile={profile}
+        theirs={screen.theirs}
+        relay={relay}
+        onCancel={() => goTab('people')}
+        onSent={async (id) => {
+          await refreshConnections();
+          setTab('people');
+          setScreen({ kind: 'person', id });
         }}
       />
     );
@@ -132,6 +192,8 @@ export function App() {
         connection={c}
         myTags={profile.tags}
         justConnected={screen.justConnected}
+        relay={relay}
+        onChanged={() => void refreshConnections()}
         onBack={() => goTab('people')}
         onRemoved={async () => {
           await refreshConnections();
@@ -150,13 +212,16 @@ export function App() {
         myTags={profile.tags}
         onConnect={() => setScreen({ kind: 'connect' })}
         onOpen={(id) => setScreen({ kind: 'person', id })}
+        onShare={relay ? () => setScreen({ kind: 'share' }) : undefined}
+        onEnterCode={relay ? () => setScreen({ kind: 'enter-code' }) : undefined}
       />
     );
   } else {
     body = <MeScreen profile={profile} onEdit={() => setScreen({ kind: 'edit' })} />;
   }
 
-  const showTabs = profile && screen.kind !== 'edit' && screen.kind !== 'connect';
+  const showTabs = profile && (screen.kind === 'tabs' || screen.kind === 'person');
+  const requestCount = connections.filter((c) => c.state === 'pending-received').length;
 
   return (
     <>
@@ -179,6 +244,12 @@ export function App() {
                     {t.glyph}
                   </span>
                   {t.label}
+                  {t.id === 'people' && requestCount > 0 && (
+                    <span class="tab-count">
+                      {requestCount}
+                      <span class="visually-hidden"> {requestCount === 1 ? 'request' : 'requests'}</span>
+                    </span>
+                  )}
                 </button>
               </li>
             ))}

@@ -1,12 +1,31 @@
+import { loadEnv } from 'vite';
 import { defineConfig } from 'vitest/config';
 import preact from '@preact/preset-vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
+/** The relay's origin, from VITE_RELAY_URL. Must be https (http only for a local relay). */
+function relayOrigin(mode: string): string | null {
+  const raw = loadEnv(mode, process.cwd(), 'VITE_').VITE_RELAY_URL;
+  if (!raw) return null;
+  const url = new URL(raw);
+  const local = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+  if (url.protocol !== 'https:' && !(local && url.protocol === 'http:')) throw new Error('VITE_RELAY_URL must be https');
+  return url.origin;
+}
+
 // Relative base so the static build works from any host path (GitHub Pages, Netlify, Cloudflare Pages...).
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   base: './',
   plugins: [
     preact(),
+    // Let the page talk to the relay, and nothing else: add only its origin to connect-src.
+    {
+      name: 'csp-relay-origin',
+      transformIndexHtml: (html: string) => {
+        const origin = relayOrigin(mode);
+        return origin ? html.replace("connect-src 'self'", `connect-src 'self' ${origin}`) : html;
+      },
+    },
     // The dev server injects CSS as inline <style> tags, which the strict CSP blocks.
     // Allow inline styles in dev only; the production build links its CSS file and keeps the strict policy.
     {
@@ -41,4 +60,4 @@ export default defineConfig({
     }),
   ],
   test: { environment: 'node' },
-});
+}));

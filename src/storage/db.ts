@@ -1,12 +1,14 @@
 // On-device storage (IndexedDB via idb). Nothing in here is sent anywhere.
 import { deleteDB, openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import type { CatchUpItem, Connection, EnergySetting, FollowUp, Invite, Note, Profile, ScheduleItem } from '../model/types';
+import type { CatchUpItem, Connection, EnergySetting, FollowUp, Intro, Invite, Note, Profile, ScheduleItem } from '../model/types';
 
 /** Typed key/value settings. Add new keys here. */
 export interface Settings {
   energy: EnergySetting;
   persistRequested: boolean;
   demoSeeded: boolean;
+  /** One-way connect codes we've shown recently. */
+  intros: Intro[];
 }
 
 interface PebbleSchema extends DBSchema {
@@ -102,6 +104,14 @@ export async function putScheduleItem(item: ScheduleItem): Promise<void> {
 }
 export async function deleteScheduleItem(id: string): Promise<void> {
   await (await db()).delete('schedule', id);
+}
+
+// One-way codes we've shown
+export async function getIntros(): Promise<Intro[]> {
+  return (await getSetting('intros')) ?? [];
+}
+export async function saveIntros(intros: Intro[]): Promise<void> {
+  await setSetting('intros', intros);
 }
 
 /** Add the demo connections once. Removing them later is respected: they are not re-added. */

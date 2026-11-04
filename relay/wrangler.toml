@@ -1,0 +1,20 @@
+# Cloudflare Workers config for the relay. Check field names against current Wrangler docs (verify).
+name = "pebble-relay"
+main = "src/worker.ts"
+compatibility_date = "2026-10-01"
+
+# No request logs or traces are kept by this worker.
+[observability]
+enabled = false
+
+[[durable_objects.bindings]]
+name = "RELAY"
+class_name = "RelayObject"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RelayObject"]
+
+[vars]
+# Browser origins allowed to call the relay. Update when the site name changes.
+ALLOWED_ORIGINS = "https://ac-lucas.github.io,http://localhost:5173,http://localhost:4173"

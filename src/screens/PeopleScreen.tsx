@@ -7,11 +7,17 @@ interface Props {
   myTags: Tag[];
   onConnect: () => void;
   onOpen: (id: string) => void;
+  /** Present only when a relay is configured. */
+  onShare?: () => void;
+  onEnterCode?: () => void;
 }
 
-export function PeopleScreen({ connections, myTags, onConnect, onOpen }: Props) {
+export function PeopleScreen({ connections, myTags, onConnect, onOpen, onShare, onEnterCode }: Props) {
   const heading = useScreenHeading<HTMLHeadingElement>();
-  const real = connections.filter((c) => !c.demo).sort((a, b) => (b.connectedAt ?? 0) - (a.connectedAt ?? 0));
+  const newest = (a: Connection, b: Connection) => (b.connectedAt ?? b.requestedAt ?? 0) - (a.connectedAt ?? a.requestedAt ?? 0);
+  const real = connections.filter((c) => !c.demo && c.state === 'connected').sort(newest);
+  const requests = connections.filter((c) => c.state === 'pending-received').sort(newest);
+  const waiting = connections.filter((c) => c.state === 'pending-sent').sort(newest);
   const demo = connections.filter((c) => c.demo);
 
   const row = (c: Connection) => {
@@ -43,7 +49,25 @@ export function PeopleScreen({ connections, myTags, onConnect, onOpen }: Props) 
         <button type="button" class="button" onClick={onConnect}>
           Connect face to face
         </button>
+        {onShare && (
+          <button type="button" class="button secondary" onClick={onShare}>
+            Share your code
+          </button>
+        )}
+        {onEnterCode && (
+          <button type="button" class="button secondary" onClick={onEnterCode}>
+            Enter a code
+          </button>
+        )}
       </div>
+
+      {requests.length > 0 && (
+        <section aria-labelledby="requests" class="stack">
+          <h3 id="requests">Want to connect ({requests.length})</h3>
+          <p class="hint">Say yes when you’re ready. If you don’t, they’re never told.</p>
+          <ul class="people">{requests.map(row)}</ul>
+        </section>
+      )}
 
       {real.length === 0 ? (
         <div class="card stack">
@@ -54,6 +78,13 @@ export function PeopleScreen({ connections, myTags, onConnect, onOpen }: Props) 
         <section aria-labelledby="your-people" class="stack">
           <h3 id="your-people">Your people ({real.length})</h3>
           <ul class="people">{real.map(row)}</ul>
+        </section>
+      )}
+
+      {waiting.length > 0 && (
+        <section aria-labelledby="waiting" class="stack">
+          <h3 id="waiting">Requests you’ve sent ({waiting.length})</h3>
+          <ul class="people">{waiting.map(row)}</ul>
         </section>
       )}
 

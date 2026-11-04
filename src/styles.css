@@ -166,6 +166,15 @@ details summary { cursor: pointer; min-height: var(--min-target); display: flex;
 .details-body { padding-top: 0.5rem; }
 .label { font-weight: 600; }
 
+.six-code { font-size: 2.5rem; font-weight: 800; letter-spacing: 0.08em; margin: 0; font-variant-numeric: tabular-nums; }
+.six-input { font-size: 1.75rem; letter-spacing: 0.2em; font-variant-numeric: tabular-nums; max-width: 12rem; }
+.tabbar button { position: relative; }
+.tab-count {
+  position: absolute; top: 0.25rem; left: calc(50% + 0.5rem);
+  min-width: 1.375rem; height: 1.375rem; padding: 0 0.3rem; border-radius: 999px;
+  background: var(--accent); color: var(--accent-fg); font-size: 0.8125rem; font-weight: 700; line-height: 1.375rem;
+}
+
 /* People */
 .people { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
 .person-row {

@@ -4,6 +4,8 @@ import { decodeCode, DecodeError, FACE_TO_FACE_TTL_MS, fitLink, type ConnectPayl
 import { QrCode } from '../connect/QrCode';
 import { QrScanner } from '../connect/QrScanner';
 import { randomId } from '../model/ids';
+import { newBox } from '../relay/protocol';
+import type { Box } from '../relay/transport';
 import { toSharedProfile } from '../model/profile';
 import type { Connection, Profile } from '../model/types';
 import { putConnection } from '../storage/db';
@@ -16,12 +18,16 @@ interface Props {
   profile: Profile;
   /** A code that arrived in the page link (someone scanned ours with their phone camera). */
   initialCode?: string;
+  /** Called with a one-way code (shared at a distance). Omitted when there is no relay. */
+  onOneWayCode?: (theirs: ConnectPayload) => void;
   onConnected: (connectionId: string) => void;
   onCancel: () => void;
 }
 
 interface Mine {
   payload: ConnectPayload;
+  /** Our mailbox for this connection; the token proves it's ours to the relay. */
+  box: Box;
   link: string;
   leftOut: string[];
 }
@@ -40,7 +46,7 @@ function appBase(): string {
   return location.href.split('#')[0]!;
 }
 
-export function ConnectScreen({ profile, initialCode, onConnected, onCancel }: Props) {
+export function ConnectScreen({ profile, initialCode, onOneWayCode, onConnected, onCancel }: Props) {
   const heading = useScreenHeading<HTMLHeadingElement>();
   const [mine, setMine] = useState<Mine | null>(null);
   const [view, setView] = useState<'show' | 'scan'>('show');
@@ -61,16 +67,17 @@ export function ConnectScreen({ profile, initialCode, onConnected, onCancel }: P
     let timer: ReturnType<typeof setTimeout> | undefined;
     let live = true;
     async function make() {
+      const box = newBox();
       const payload: ConnectPayload = {
         mode: 'f',
         nonce: randomId(),
-        mailboxId: randomId(),
+        mailboxId: box.id,
         expiresAt: Date.now() + FACE_TO_FACE_TTL_MS,
         profile: toSharedProfile(profile),
       };
       const next = await fitLink(payload, appBase());
       if (!live) return;
-      setMine(next);
+      setMine({ ...next, box });
       timer = setTimeout(function due() {
         // Don't refresh while theirs is on screen, or the match word would change under them.
         // Check again shortly, so "Different word" never leaves an expired code on show.
@@ -91,7 +98,11 @@ export function ConnectScreen({ profile, initialCode, onConnected, onCancel }: P
     try {
       const p = await decodeCode(text);
       if (p.nonce === mine.payload.nonce) throw new Error('own');
-      if (p.mode !== 'f') throw new Error('regular');
+      if (p.mode !== 'f') {
+        if (!onOneWayCode) throw new Error('regular');
+        onOneWayCode(p);
+        return true;
+      }
       lastBad.current = null;
       setProblem(null);
       setTheirs(p);
@@ -128,7 +139,8 @@ export function ConnectScreen({ profile, initialCode, onConnected, onCancel }: P
         state: 'connected',
         connectedAt: Date.now(),
         mailboxId: theirs.mailboxId,
-        myMailboxId: mine.payload.mailboxId,
+        myMailboxId: mine.box.id,
+        myMailboxToken: mine.box.token,
         via: 'face-to-face',
         sharedSecret: await pairSecret(mine.payload.nonce, theirs.nonce),
         scheduleSharing: false,

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Connection, Note, Tag } from '../model/types';
-import { listNotes, removeConnection } from '../storage/db';
+import { approveRequest } from '../relay/protocol';
+import { RelayError, type Transport } from '../relay/transport';
+import { listNotes, putConnection, removeConnection } from '../storage/db';
 import { announce } from '../ui/announce';
 import { useScreenHeading } from '../ui/useScreenHeading';
 import { ProfileCard } from './ProfileCard';
@@ -10,14 +12,18 @@ interface Props {
   connection: Connection;
   myTags: Tag[];
   justConnected?: boolean;
+  relay: Transport | null;
   onBack: () => void;
   onRemoved: () => void;
+  onChanged: () => void;
 }
 
-export function PersonScreen({ connection: c, myTags, justConnected, onBack, onRemoved }: Props) {
+export function PersonScreen({ connection: c, myTags, justConnected, relay, onBack, onRemoved, onChanged }: Props) {
   const heading = useScreenHeading<HTMLHeadingElement>();
   const [notes, setNotes] = useState<Note[]>([]);
   const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
   const name = c.profile.displayName;
 
@@ -39,6 +45,35 @@ export function PersonScreen({ connection: c, myTags, justConnected, onBack, onR
     onRemoved();
   }
 
+  async function approve() {
+    if (!relay) return;
+    setBusy(true);
+    setProblem(null);
+    try {
+      await putConnection(await approveRequest(relay, c));
+      announce(`You’re connected with ${name}.`);
+      onChanged();
+    } catch (e) {
+      const msg = e instanceof RelayError && e.problem === 'offline' ? 'You seem to be offline. Try again when you have a connection.' : 'That didn’t go through. Try again in a moment.';
+      setProblem(msg);
+      announce(msg);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Declining or cancelling just deletes it on this phone. Nothing is sent. */
+  async function dismiss(message: string) {
+    try {
+      await removeConnection(c.id);
+    } catch {
+      announce('That didn’t work. Try again in a moment.');
+      return;
+    }
+    announce(message);
+    onRemoved();
+  }
+
   const since = c.connectedAt ? new Date(c.connectedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'long' }) : null;
 
   return (
@@ -53,7 +88,11 @@ export function PersonScreen({ connection: c, myTags, justConnected, onBack, onR
           {name}
           {c.demo && <span class="badge">Demo</span>}
         </h2>
-        {justConnected ? (
+        {c.state === 'pending-received' ? (
+          <p class="lede">{name} would like to connect.</p>
+        ) : c.state === 'pending-sent' ? (
+          <p class="lede">Request sent.</p>
+        ) : justConnected ? (
           <p class="lede">You’re connected. Nice one.</p>
         ) : (
           since && <p class="muted">{c.demo ? 'Demo connection' : `Connected ${since}${c.via === 'face-to-face' ? ', face to face' : ''}`}</p>
@@ -62,6 +101,38 @@ export function PersonScreen({ connection: c, myTags, justConnected, onBack, onR
 
       <SharedTopics mine={myTags} theirs={c.profile.tags} name={name} />
       <ProfileCard profile={c.profile} />
+
+      {c.state === 'pending-received' && (
+        <section class="card stack" aria-labelledby="decide-heading">
+          <h3 id="decide-heading">Connect with {name}?</h3>
+          <p>Saying yes lets you send each other meetup invites. If you’d rather not, they’re never told.</p>
+          {problem && (
+            <p class="error" role="alert">
+              {problem}
+            </p>
+          )}
+          <div class="actions">
+            <button type="button" class="button" onClick={approve} disabled={busy || !relay}>
+              {busy ? 'Connecting…' : 'Yes, connect'}
+            </button>
+            <button type="button" class="button secondary" onClick={() => dismiss('Request removed.')}>
+              Not now
+            </button>
+          </div>
+        </section>
+      )}
+
+      {c.state === 'pending-sent' && (
+        <section class="card stack" aria-labelledby="waiting-heading">
+          <h3 id="waiting-heading">Waiting to hear back</h3>
+          <p>They’ll show up as connected once they say yes. If they don’t, you won’t hear anything, and that’s fine.</p>
+          <div class="actions">
+            <button type="button" class="button secondary" onClick={() => dismiss('Request cancelled.')}>
+              Cancel request
+            </button>
+          </div>
+        </section>
+      )}
 
       {notes.length > 0 && (
         <section aria-labelledby="notes-heading" class="stack">
@@ -77,6 +148,7 @@ export function PersonScreen({ connection: c, myTags, justConnected, onBack, onR
         </section>
       )}
 
+      {c.state === 'connected' && (
       <section aria-labelledby="remove-heading" class="stack">
         <h3 id="remove-heading" class="visually-hidden">
           Remove
@@ -101,6 +173,7 @@ export function PersonScreen({ connection: c, myTags, justConnected, onBack, onR
           </button>
         )}
       </section>
+      )}
     </section>
   );
 }

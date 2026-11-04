@@ -55,8 +55,14 @@ export interface Connection {
   mailboxId?: string;
   /** Our relay mailbox for this connection: where they leave messages for us. */
   myMailboxId?: string;
+  /** Proves to the relay that our mailbox is ours. Never shared. */
+  myMailboxToken?: string;
+  /** Their one-time pairing number, kept to ignore a repeated request from the same code. */
+  theirNonce?: string;
+  /** When a request was sent or received. */
+  requestedAt?: number;
   /** How we connected. */
-  via: 'face-to-face' | 'qr' | 'code' | 'link' | 'demo';
+  via: 'face-to-face' | 'request' | 'demo';
   /** Per-connection secret (base64url), used to derive encryption keys. */
   sharedSecret?: string;
   scheduleSharing: boolean;
@@ -153,4 +159,13 @@ export interface CatchUpItem {
 export interface EnergySetting {
   level: EnergyLevel;
   setAt: number;
+}
+
+/** A one-way connect code we've shown (QR, link or six-digit code). Requests to it arrive in its mailbox. */
+export interface Intro {
+  nonce: string;
+  mailboxId: string;
+  mailboxToken: string;
+  createdAt: number;
+  expiresAt: number;
 }
