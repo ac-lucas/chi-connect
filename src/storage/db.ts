@@ -6,6 +6,7 @@ import type { CatchUpItem, Connection, EnergySetting, FollowUp, Invite, Note, Pr
 export interface Settings {
   energy: EnergySetting;
   persistRequested: boolean;
+  demoSeeded: boolean;
 }
 
 interface PebbleSchema extends DBSchema {
@@ -101,6 +102,17 @@ export async function putScheduleItem(item: ScheduleItem): Promise<void> {
 }
 export async function deleteScheduleItem(id: string): Promise<void> {
   await (await db()).delete('schedule', id);
+}
+
+/** Add the demo connections once. Removing them later is respected: they are not re-added. */
+export async function seedDemoOnce(now = Date.now()): Promise<void> {
+  if (await getSetting('demoSeeded')) return;
+  const { DEMO_CONNECTIONS, DEMO_NOTES } = await import('../data/demo');
+  const tx = (await db()).transaction(['connections', 'notes', 'settings'], 'readwrite');
+  for (const c of DEMO_CONNECTIONS) await tx.objectStore('connections').put({ ...c, connectedAt: now });
+  for (const n of DEMO_NOTES) await tx.objectStore('notes').put({ ...n, createdAt: now });
+  await tx.objectStore('settings').put(true, 'demoSeeded');
+  await tx.done;
 }
 
 /** Delete everything this app keeps on this device. */

@@ -17,6 +17,14 @@ for (const t of KNOWN_TAGS) {
   for (const name of [t.label, t.id, ...t.aliases]) index.set(normaliseTagText(name), t);
 }
 
+const byId = new Map(KNOWN_TAGS.map((t) => [t.id, t]));
+
+/** Look up a known topic by its ID (used when decoding a connect code). */
+export function knownTagById(id: string): Tag | null {
+  const t = byId.get(id);
+  return t ? knownTag(t) : null;
+}
+
 export function knownTag(t: KnownTag): Tag {
   return { key: t.id, label: t.label };
 }

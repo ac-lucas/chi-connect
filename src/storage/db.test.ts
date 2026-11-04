@@ -15,6 +15,7 @@ import {
   removeConnection,
   resetDatabaseForTests,
   saveProfile,
+  seedDemoOnce,
   setSetting,
 } from './db';
 
@@ -30,6 +31,7 @@ const conn = (id: string): Connection => ({
   scheduleSharing: false,
   sharedSessionIds: [],
   demo: false,
+  via: 'face-to-face',
 });
 
 describe('storage', () => {
@@ -63,5 +65,15 @@ describe('storage', () => {
     await putScheduleItem({ ...base, id: 's1', start: 100, end: 200 });
     await putScheduleItem({ ...base, id: 's2', start: 300, end: 400 });
     expect((await listSchedule(0, 250)).map((s) => s.id)).toEqual(['s1']);
+  });
+
+  it('seeds demo connections once and respects removal', async () => {
+    await seedDemoOnce();
+    const demos = await listConnections();
+    expect(demos.length).toBeGreaterThan(0);
+    expect(demos.every((c) => c.demo && c.via === 'demo')).toBe(true);
+    await removeConnection(demos[0]!.id);
+    await seedDemoOnce();
+    expect(await listConnections()).toHaveLength(demos.length - 1);
   });
 });

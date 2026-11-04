@@ -51,8 +51,12 @@ export interface Connection {
   profile: SharedProfile;
   state: ConnectionState;
   connectedAt?: number;
-  /** Relay mailbox for messages to this person. */
+  /** Their relay mailbox: where we leave messages for them. */
   mailboxId?: string;
+  /** Our relay mailbox for this connection: where they leave messages for us. */
+  myMailboxId?: string;
+  /** How we connected. */
+  via: 'face-to-face' | 'qr' | 'code' | 'link' | 'demo';
   /** Per-connection secret (base64url), used to derive encryption keys. */
   sharedSecret?: string;
   scheduleSharing: boolean;
