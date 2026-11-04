@@ -1,0 +1,14 @@
+node_modules/
+dist/
+dev-dist/
+.env
+.env.*
+*.local
+.DS_Store
+.wrangler/
+
+# private project notes (kept locally, not published)
+CLAUDE.md
+CLAUDE.local.md
+docs/
+private/

@@ -1,0 +1,28 @@
+/* Accessibility baseline (ACC-3/4/5/7): contrast tokens, scalable text, visible focus, reduced motion. */
+:root {
+  --bg: #ffffff;
+  --fg: #14213d;          /* 15.9:1 on --bg */
+  --accent: #1d3557;      /* 12.1:1 on --bg */
+  --focus: #b45309;       /* >= 3:1 against --bg for the focus ring */
+  --min-target: 44px;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0b1320; --fg: #f1f5f9; --accent: #9ec5fe; --focus: #fbbf24; }
+}
+html { font-size: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 1rem/1.5 system-ui, sans-serif;
+  overflow-wrap: anywhere; /* ACC-8: long names and non-Latin text must not break layout */
+}
+header, main, footer { padding: 0.75rem 1rem; max-width: 40rem; margin: 0 auto; }
+a, button, input, select, textarea { min-height: var(--min-target); }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.skip-link { position: absolute; left: -999px; }
+.skip-link:focus { left: 0.5rem; top: 0.5rem; background: var(--bg); padding: 0.5rem; z-index: 10; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}

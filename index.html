@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!-- CSP: keep tight; add new origins to connect-src only when needed. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="theme-color" content="#1d3557" />
+    <!-- Ask search engines not to index or archive this page. Honoured by well-behaved crawlers only; it is not access control. -->
+    <meta name="robots" content="noindex, nofollow, noarchive, nosnippet" />
+    <meta name="referrer" content="no-referrer" />
+    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <!-- Home-screen install on iOS Safari uses these tags rather than the web manifest alone (verify current behaviour on a real device). -->
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Pebble" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <title>Pebble</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
