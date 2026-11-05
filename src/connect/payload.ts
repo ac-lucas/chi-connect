@@ -12,6 +12,7 @@ import type { SharedProfile, Tag } from '../model/types';
 import { fromBase64Url, toBase64Url } from './base64url';
 import { importPublicKey, isPublicKeyText } from './pairing';
 import { readCapped } from '../util/stream';
+import { ADDRESS } from '../relay/address';
 
 /** v2 added the ECDH public key (k). v1 codes, from before that, are refused with 'older-version'. */
 export const PAYLOAD_VERSION = 2;
@@ -223,7 +224,7 @@ export async function decodeCode(input: string, now = Date.now()): Promise<Conne
   } catch {
     throw new DecodeError('unreadable');
   }
-  if (wire.b !== undefined && (!str(wire.b) || !ID.test(wire.b))) throw new DecodeError('unreadable');
+  if (wire.b !== undefined && (!str(wire.b) || !ADDRESS.test(wire.b))) throw new DecodeError('unreadable');
   if (typeof wire.x !== 'number' || !Number.isFinite(wire.x)) throw new DecodeError('unreadable');
   const expiresAt = wire.x * 1000;
   if (expiresAt < now) throw new DecodeError('expired');

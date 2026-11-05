@@ -4,13 +4,15 @@ import { INTRO_KEEP_MS, syncOnce } from '../relay/protocol';
 import type { Transport } from '../relay/transport';
 import { handleInviteMessage } from '../schedule/invites';
 import { handleSessionsMessage, shareSessionsIfChanged } from '../schedule/overlap';
-import { getIntros, listAllSchedule, listConnections, listInvites, pruneIntros, putConnection, updateConnection } from '../storage/db';
+import { getHome, getIntros, getSetting, listAllSchedule, listConnections, listInvites, pruneIntros, putConnection, setSetting, updateConnection } from '../storage/db';
 import { announce } from '../ui/announce';
 
 /** Sync while something is expected (a reply, a request to a live code, an upcoming meetup)... */
 const SYNC_ACTIVE_MS = 60_000;
 /** ...and when nothing is: a few requests an hour instead of sixty. */
 const SYNC_IDLE_MS = 5 * 60_000;
+/** When the relay says more mail is waiting. */
+const SYNC_MORE_MS = 2_000;
 /** Coming back to the app syncs straight away, unless it synced this recently. */
 const SYNC_MIN_GAP_MS = 20_000;
 
@@ -41,11 +43,17 @@ export function useRelaySync(relay: Transport | null, enabled: boolean): void {
         const newInvites: string[] = [];
         // Expired one-way codes (and their private keys) go once no late request can still arrive.
         await pruneIntros((i) => i.expiresAt + INTRO_KEEP_MS);
-        const r = await syncOnce(relay, {
+        let lastAcks: string[] = [];
+        const r = await syncOnce(relay, await getHome(), {
           intros: getIntros,
           connections: listConnections,
           put: putConnection,
           patch: updateConnection,
+          acks: async () => (lastAcks = (await getSetting('relayAcks')) ?? []),
+          // Only written when there's something to change: every settings write makes open screens reload.
+          setAcks: async (ids) => {
+            if (ids.length || lastAcks.length) await setSetting('relayAcks', ids);
+          },
           onPairMessage: async (c, msg, sentAt) => {
             if (msg.t === 'sessions') return handleSessionsMessage(c, msg.ids);
             const what = await handleInviteMessage(c, msg, sentAt);
@@ -75,7 +83,8 @@ export function useRelaySync(relay: Transport | null, enabled: boolean): void {
           conns.some((c) => c.state === 'pending-sent') ||
           (await getIntros()).some((i) => i.expiresAt > now) ||
           (await listInvites()).some((i) => i.end > now && i.status !== 'declined' && i.status !== 'cancelled');
-        next = expecting ? SYNC_ACTIVE_MS : SYNC_IDLE_MS;
+        // The relay held some mail back (reply size cap): fetch the rest straight away.
+        next = r.more ? SYNC_MORE_MS : expecting ? SYNC_ACTIVE_MS : SYNC_IDLE_MS;
       } catch {
         // Offline or the relay is busy: try again at the slower pace.
       } finally {

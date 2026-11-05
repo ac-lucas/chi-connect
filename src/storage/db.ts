@@ -12,6 +12,10 @@ export interface Settings {
   persistRequested: boolean;
   demoSeeded: boolean;
   demoScheduleSeeded: boolean;
+  /** This device's home on the relay (its secret token stays here). */
+  relayHome: import('../relay/address').Home;
+  /** Relay message IDs handled last sync, acked on the next one. */
+  relayAcks: string[];
   /** One-way connect codes we've shown recently. */
   intros: Intro[];
   /** Day 1 of the sample programme (local midnight), fixed the first time the app is opened. */
@@ -215,6 +219,17 @@ export async function putScheduleItem(item: ScheduleItem): Promise<void> {
 export async function deleteScheduleItem(id: string): Promise<void> {
   await (await db()).delete('schedule', id);
   changed('schedule');
+}
+
+// The device's relay home
+/** This device's home on the relay, made the first time it's needed. */
+export async function getHome(): Promise<import('../relay/address').Home> {
+  const held = await getSetting('relayHome');
+  if (held) return held;
+  const { newHome } = await import('../relay/address');
+  const home = await newHome();
+  await updateSetting('relayHome', (current) => current ?? home); // two tabs at once: the first one wins
+  return (await getSetting('relayHome'))!;
 }
 
 // One-way codes we've shown

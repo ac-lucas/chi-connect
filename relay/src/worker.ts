@@ -1,56 +1,92 @@
-// Cloudflare Workers entry. The edge worker handles CORS, size limits and the client key,
-// then calls one SQLite-backed Durable Object that owns all relay state (strongly consistent,
-// so a six-digit code can only be redeemed once). Platform behaviour: verify against current docs.
+// Cloudflare Workers entry. The edge worker handles CORS, size limits and a high per-address ceiling, then
+// routes each request to one small SQLite-backed Durable Object: the device's home (its mailboxes) or one shard
+// of six-digit codes. Each object is strongly consistent, so a code can only be redeemed once. Platform
+// behaviour (limits, billing, alarms): verify against current docs.
 import { DurableObject } from 'cloudflare:workers';
-import { clientPrefix, RelayCore, type RelayRequest, type Sql } from './core';
+import { clientPrefix, codeShard, CodesCore, HomeCore, RateLimiter, type RelayResponse, type Sql } from './core';
 
 export interface Env {
-  RELAY: DurableObjectNamespace<RelayObject>;
+  HOME: DurableObjectNamespace<HomeObject>;
+  CODES: DurableObjectNamespace<CodesObject>;
   /** Comma-separated list of origins allowed to call the relay from a browser. */
   ALLOWED_ORIGINS: string;
 }
 
 const MAX_BODY_BYTES = 16 * 1024;
-const PURGE_EVERY_MS = 5 * 60 * 1000;
 
-/** What the edge worker passes to the Durable Object. The IP is hashed there and never stored. */
-export interface EdgeRequest {
-  path: string;
-  body: unknown;
-  ip: string;
+function sqlOf(ctx: DurableObjectState): Sql {
+  const sql = ctx.storage.sql;
+  return {
+    all: <T>(q: string, ...p: (string | number | null)[]) => sql.exec(q, ...p).toArray() as T[],
+    run: (q: string, ...p: (string | number | null)[]) => {
+      sql.exec(q, ...p);
+    },
+  };
 }
 
-export class RelayObject extends DurableObject<Env> {
-  private core: RelayCore;
-  /**
-   * Random salt for client keys, held in memory by the one object that does the rate limiting. Keys can't be
-   * turned back into IP addresses, stay the same whichever edge isolate a request came through (a per-isolate
-   * salt would hand each isolate its own budget), and change when the object restarts.
-   */
-  private salt: string;
+type Reply = { status: number; json: string };
+const reply = (r: RelayResponse): Reply => ({ status: r.status, json: JSON.stringify(r.body) });
+
+/**
+ * Wake the object when there's something to clean up (the next expiry), and only then: an idle relay costs
+ * nothing. The alarm is only moved when it would come sooner, so most requests don't touch it.
+ */
+async function wakeFor(ctx: DurableObjectState, next: number | null): Promise<void> {
+  if (next === null) return;
+  const current = await ctx.storage.getAlarm();
+  if (current === null || next < current) await ctx.storage.setAlarm(next);
+}
+
+/** One device's home: its mailboxes and the messages waiting in them. */
+export class HomeObject extends DurableObject<Env> {
+  private core: HomeCore | null = null;
+  private coreHome = '';
+
+  private homeCore(homeId: string): HomeCore {
+    if (!this.core || this.coreHome !== homeId) {
+      this.core = new HomeCore(sqlOf(this.ctx), homeId);
+      this.coreHome = homeId;
+      this.core.migrate();
+    }
+    return this.core;
+  }
+
+  async sync(homeId: string, body: unknown): Promise<Reply> {
+    const core = this.homeCore(homeId);
+    const r = await core.sync(body, Date.now());
+    await wakeFor(this.ctx, core.nextWake(Date.now()));
+    return reply(r);
+  }
+
+  async send(homeId: string, box: string, body: unknown): Promise<Reply> {
+    const core = this.homeCore(homeId);
+    const r = core.send(box, body, Date.now());
+    if (r.status === 201) await wakeFor(this.ctx, core.nextWake(Date.now()));
+    return reply(r);
+  }
+
+  override async alarm(): Promise<void> {
+    // Clean-up doesn't need the home ID (only ownership checks do), so a core made here is never used to sync.
+    const core = this.core ?? new HomeCore(sqlOf(this.ctx), '');
+    core.migrate();
+    const now = Date.now();
+    core.purge(now);
+    const next = core.nextWake(now);
+    if (next === null) await this.ctx.storage.deleteAll(); // nothing left: the home is gone entirely
+    else await this.ctx.storage.setAlarm(next);
+  }
+}
+
+/** One shard of six-digit codes. */
+export class CodesObject extends DurableObject<Env> {
+  private core: CodesCore;
+  /** Random salt for client keys, in memory only: keys can't be turned back into IP addresses. */
+  private salt = Array.from(crypto.getRandomValues(new Uint8Array(16))).join('.');
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
-    this.salt = Array.from(crypto.getRandomValues(new Uint8Array(16))).join('.');
-    const sql = ctx.storage.sql;
-    const adapter: Sql = {
-      all: <T>(q: string, ...p: (string | number | null)[]) => sql.exec(q, ...p).toArray() as T[],
-      run: (q: string, ...p: (string | number | null)[]) => {
-        sql.exec(q, ...p);
-      },
-    };
-    this.core = new RelayCore(adapter);
-    void ctx.blockConcurrencyWhile(async () => {
-      this.core.migrate();
-      if ((await ctx.storage.getAlarm()) === null) await ctx.storage.setAlarm(Date.now() + PURGE_EVERY_MS);
-    });
-  }
-
-  /** Returns the status and a JSON string (plain values cross the Durable Object boundary cleanly). */
-  async handle(req: EdgeRequest): Promise<{ status: number; json: string }> {
-    const relayReq: RelayRequest = { method: 'POST', path: req.path, body: req.body, clientKey: await this.clientKey(req.ip) };
-    const res = await this.core.handle(relayReq);
-    return { status: res.status, json: JSON.stringify(res.body) };
+    this.core = new CodesCore(sqlOf(ctx));
+    this.core.migrate();
   }
 
   private async clientKey(ip: string): Promise<string> {
@@ -58,11 +94,25 @@ export class RelayObject extends DurableObject<Env> {
     return Array.from(h.slice(0, 12), (b) => b.toString(16).padStart(2, '0')).join('');
   }
 
+  async create(body: unknown, ip: string): Promise<Reply> {
+    const r = this.core.create(body, await this.clientKey(ip), Date.now());
+    if (r.status === 201) await wakeFor(this.ctx, this.core.nextWake(Date.now()));
+    return reply(r);
+  }
+
+  async redeem(body: unknown, ip: string): Promise<Reply> {
+    return reply(this.core.redeem(body, await this.clientKey(ip), Date.now()));
+  }
+
   override async alarm(): Promise<void> {
     this.core.purge(Date.now());
-    await this.ctx.storage.setAlarm(Date.now() + PURGE_EVERY_MS);
+    const next = this.core.nextWake(Date.now());
+    if (next !== null) await this.ctx.storage.setAlarm(next);
   }
 }
+
+/** Per-isolate flood ceiling per client address. Approximate by design: a coarse guard, not the real limits. */
+const edge = new RateLimiter();
 
 /**
  * Read the body without ever holding more than MAX_BODY_BYTES: a missing or false Content-Length
@@ -131,6 +181,8 @@ export default {
     if (origin && !cors['Access-Control-Allow-Origin']) return json(403, { error: 'origin' }, cors);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
     if (request.method !== 'POST') return json(405, { error: 'method' }, cors);
+    const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown';
+    if (!edge.hit(clientPrefix(ip), 'edge', Date.now())) return json(429, { error: 'slow-down' }, cors);
 
     const declared = Number(request.headers.get('Content-Length') ?? '0');
     if (declared > MAX_BODY_BYTES) return json(413, { error: 'too-large' }, cors);
@@ -143,12 +195,20 @@ export default {
       return json(400, { error: 'bad-json' }, cors);
     }
 
-    const stub = env.RELAY.get(env.RELAY.idFromName('main'));
-    const res = await stub.handle({
-      path: new URL(request.url).pathname,
-      body,
-      ip: request.headers.get('CF-Connecting-IP') ?? 'unknown',
-    });
+    const path = new URL(request.url).pathname;
+    let res: Reply | null = null;
+    let m: RegExpExecArray | null;
+    if ((m = /^\/v2\/homes\/([A-Za-z0-9_-]{22})\/sync$/.exec(path))) {
+      res = await env.HOME.get(env.HOME.idFromName(m[1]!)).sync(m[1]!, body);
+    } else if ((m = /^\/v2\/homes\/([A-Za-z0-9_-]{22})\/boxes\/([A-Za-z0-9_-]{22})\/messages$/.exec(path))) {
+      res = await env.HOME.get(env.HOME.idFromName(m[1]!)).send(m[1]!, m[2]!, body);
+    } else if (path === '/v2/codes' || path === '/v2/codes/redeem') {
+      const code = (body as { code?: unknown } | undefined)?.code;
+      if (typeof code !== 'string' || !/^\d{6}$/.test(code)) return json(400, { error: 'bad-request' }, cors);
+      const shard = env.CODES.get(env.CODES.idFromName(codeShard(code)));
+      res = path === '/v2/codes' ? await shard.create(body, ip) : await shard.redeem(body, ip);
+    }
+    if (!res) return json(404, { error: 'not-found' }, cors);
     return raw(res.status, res.json, cors);
   },
 } satisfies ExportedHandler<Env>;

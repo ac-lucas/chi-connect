@@ -1,24 +1,67 @@
-// Local relay for development: the same RelayCore over Node's built-in SQLite (in memory) and HTTP.
+// Local relay for development: the same HomeCore / CodesCore over Node's built-in SQLite (in memory) and HTTP,
+// with one database per home and per code shard, as on Cloudflare.
 // Run from the repository root:  node relay/src/dev-server.ts   (then set VITE_RELAY_URL=http://localhost:8787)
 // Not for production: no TLS, data is lost on restart.
 import { createServer } from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
-import { clientPrefix, RelayCore, type Sql } from './core.ts';
+import { clientPrefix, codeShard, CodesCore, HomeCore, type RelayResponse, type Sql } from './core.ts';
 
 const PORT = Number(process.env.PORT ?? 8787);
-const ALLOWED = new Set(['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:4173', 'http://127.0.0.1:4173']);
+// Local dev origins: the usual dev and preview ports, plus 5176/5177 for testing two "phones" side by side.
+const ALLOWED = new Set(
+  [5173, 4173, 5176, 5177].flatMap((port) => [`http://localhost:${port}`, `http://127.0.0.1:${port}`, `http://[::1]:${port}`]),
+);
 const MAX_BODY = 16 * 1024;
 
-const db = new DatabaseSync(':memory:');
-const sql: Sql = {
-  all: <T>(q: string, ...p: (string | number | null)[]) => db.prepare(q).all(...p) as T[],
-  run: (q: string, ...p: (string | number | null)[]) => {
-    db.prepare(q).run(...p);
-  },
+function memorySql(): Sql {
+  const db = new DatabaseSync(':memory:');
+  return {
+    all: <T>(q: string, ...p: (string | number | null)[]) => db.prepare(q).all(...p) as T[],
+    run: (q: string, ...p: (string | number | null)[]) => {
+      db.prepare(q).run(...p);
+    },
+  };
+}
+
+const homes = new Map<string, HomeCore>();
+const shards = new Map<string, CodesCore>();
+const home = (id: string) => {
+  let h = homes.get(id);
+  if (!h) {
+    h = new HomeCore(memorySql(), id);
+    h.migrate();
+    homes.set(id, h);
+  }
+  return h;
 };
-const core = new RelayCore(sql);
-core.migrate();
-setInterval(() => core.purge(Date.now()), 60_000).unref();
+const shard = (code: string) => {
+  const key = codeShard(code);
+  let c = shards.get(key);
+  if (!c) {
+    c = new CodesCore(memorySql());
+    c.migrate();
+    shards.set(key, c);
+  }
+  return c;
+};
+setInterval(() => {
+  const now = Date.now();
+  for (const h of homes.values()) h.purge(now);
+  for (const c of shards.values()) c.purge(now);
+}, 60_000).unref();
+
+async function route(path: string, body: unknown, ip: string): Promise<RelayResponse> {
+  const now = Date.now();
+  let m: RegExpExecArray | null;
+  if ((m = /^\/v2\/homes\/([A-Za-z0-9_-]{22})\/sync$/.exec(path))) return home(m[1]!).sync(body, now);
+  if ((m = /^\/v2\/homes\/([A-Za-z0-9_-]{22})\/boxes\/([A-Za-z0-9_-]{22})\/messages$/.exec(path))) return home(m[1]!).send(m[2]!, body, now);
+  if (path === '/v2/codes' || path === '/v2/codes/redeem') {
+    const code = (body as { code?: unknown } | undefined)?.code;
+    if (typeof code !== 'string' || !/^\d{6}$/.test(code)) return { status: 400, body: { error: 'bad-request' } };
+    return path === '/v2/codes' ? shard(code).create(body, clientPrefix(ip), now) : shard(code).redeem(body, clientPrefix(ip), now);
+  }
+  return { status: 404, body: { error: 'not-found' } };
+}
 
 createServer((req, res) => {
   const origin = req.headers.origin;
@@ -37,6 +80,7 @@ createServer((req, res) => {
     res.writeHead(204, headers);
     return res.end();
   }
+  if (req.method !== 'POST') return reply(405, { error: 'method' });
   let size = 0;
   const chunks: Buffer[] = [];
   req.on('data', (c: Buffer) => {
@@ -52,12 +96,7 @@ createServer((req, res) => {
     } catch {
       return reply(400, { error: 'bad-json' });
     }
-    const out = await core.handle({
-      method: req.method ?? 'GET',
-      path: new URL(req.url ?? '/', 'http://localhost').pathname,
-      body,
-      clientKey: clientPrefix(req.socket.remoteAddress ?? 'local'),
-    });
+    const out = await route(new URL(req.url ?? '/', 'http://localhost').pathname, body, req.socket.remoteAddress ?? 'local');
     reply(out.status, out.body);
   });
 }).listen(PORT, () => console.log(`Local relay on http://localhost:${PORT}`));

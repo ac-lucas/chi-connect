@@ -24,7 +24,7 @@ const KEY = (await newPairKey()).publicKey;
 const NOW = 1_800_000_000_000;
 
 function payload(profile: SharedProfile): ConnectPayload {
-  return { mode: 'f', nonce: randomId(), publicKey: KEY, mailboxId: randomId(), expiresAt: NOW + FACE_TO_FACE_TTL_MS, profile };
+  return { mode: 'f', nonce: randomId(), publicKey: KEY, mailboxId: `${randomId()}.${randomId()}`, expiresAt: NOW + FACE_TO_FACE_TTL_MS, profile };
 }
 
 const typical: SharedProfile = {

@@ -7,7 +7,9 @@ import { QrCode } from '../connect/QrCode';
 import { QrScanner } from '../connect/QrScanner';
 import { randomId } from '../model/ids';
 import { newBox } from '../relay/protocol';
-import type { Box, Transport } from '../relay/transport';
+import type { Transport } from '../relay/transport';
+import { splitAddress } from '../relay/address';
+import { getHome } from '../storage/db';
 import { toSharedProfile } from '../model/profile';
 import type { Connection, Profile } from '../model/types';
 import { putConnection } from '../storage/db';
@@ -32,7 +34,8 @@ interface Props {
 interface Mine {
   payload: ConnectPayload;
   /** Our mailbox for this connection; the token proves it's ours to the relay. */
-  box: Box;
+  /** Our mailbox address for this connection, in this device's relay home. */
+  box: string;
   /** This code's key pair. Kept in memory only; a new one comes with every new code. */
   key: PairKey;
   link: string;
@@ -87,15 +90,16 @@ export function ConnectScreen({ profile, relay, initialCode, onOneWayCode, onCon
       }
     }
     async function makeOnce() {
-      const box = await newBox();
-      // Claim our mailbox now: the relay only takes mail for claimed mailboxes. Fine if offline; sync claims it later.
-      relay?.claim(box).catch(() => {});
+      const home = await getHome();
+      const box = newBox(home);
+      // Register it now: the relay only takes mail for registered mailboxes. Fine if offline; the next sync does it.
+      relay?.register(home, [splitAddress(box).box]).catch(() => {});
       const key = await newPairKey();
       const payload: ConnectPayload = {
         mode: 'f',
         nonce: randomId(),
         publicKey: key.publicKey,
-        mailboxId: box.id,
+        mailboxId: box,
         expiresAt: Date.now() + FACE_TO_FACE_TTL_MS,
         profile: toSharedProfile(profile),
       };
@@ -129,7 +133,7 @@ export function ConnectScreen({ profile, relay, initialCode, onOneWayCode, onCon
       }
       if (!mine) throw new Error('not-ready');
       // A code that points at our own mailbox is someone replaying our code with a new nonce: refuse it.
-      if (p.mailboxId && p.mailboxId === mine.box.id) throw new Error('own');
+      if (p.mailboxId && p.mailboxId === mine.box) throw new Error('own');
       lastBad.current = null;
       setProblem(null);
       setTheirs(p);
@@ -164,8 +168,7 @@ export function ConnectScreen({ profile, relay, initialCode, onOneWayCode, onCon
         state: 'connected',
         connectedAt: Date.now(),
         mailboxId: theirs.mailboxId,
-        myMailboxId: mine.box.id,
-        myMailboxToken: mine.box.token,
+        myMailboxId: mine.box,
         via: 'face-to-face',
         sharedSecret: await pairSecret(mine.key.privateKey, mine.payload, theirs),
         scheduleSharing: false,

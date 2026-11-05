@@ -1,4 +1,5 @@
 import 'fake-indexeddb/auto';
+import { newHome, splitAddress } from '../relay/address';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createProfile, emptyDraft } from '../model/profile';
 import type { Connection } from '../model/types';
@@ -53,7 +54,7 @@ describe('storage', () => {
 
   it("keeps an intro's private key usable but unreadable after a reload", async () => {
     const { newIntro } = await import('../relay/protocol');
-    const intro = await newIntro();
+    const intro = await newIntro(await newHome());
     await saveIntros([intro]);
     const [back] = await getIntros();
     expect(back?.privateKey?.extractable).toBe(false);
@@ -63,11 +64,19 @@ describe('storage', () => {
 
   it('pruning keeps JWK-backed intros that are still in time, and drops expired ones', async () => {
     const { newIntro } = await import('../relay/protocol');
-    const live = await newIntro(Date.now(), { exportable: true });
-    const old = await newIntro(Date.now() - 100 * 3_600_000, { exportable: true });
+    const live = await newIntro(await newHome(), Date.now(), { exportable: true });
+    const old = await newIntro(await newHome(), Date.now() - 100 * 3_600_000, { exportable: true });
     await saveIntros([live, old]);
     await pruneIntros((i) => i.expiresAt + 48 * 3_600_000);
     expect((await getIntros()).map((i) => i.nonce)).toEqual([live.nonce]);
+  });
+
+  it('makes the device home once and keeps it', async () => {
+    const { getHome } = await import('./db');
+    const [a, b] = await Promise.all([getHome(), getHome()]); // two at once (two tabs): still one home
+    expect(a).toEqual(b);
+    expect(await getHome()).toEqual(a);
+    expect(a.id).toBe(await (await import('../relay/crypto')).homeIdFor(a.token));
   });
 
   it('detects that keys can be stored here', async () => {
@@ -77,7 +86,8 @@ describe('storage', () => {
   it("falls back to JWK where keys can't be stored, and the reloaded key still opens requests", async () => {
     const { newIntro, introPayload, sendRequest, openHello } = await import('../relay/protocol');
     const { SimulatedTransport } = await import('../relay/transport');
-    const intro = await newIntro(Date.now(), { exportable: true });
+    const home = await newHome();
+    const intro = await newIntro(home, Date.now(), { exportable: true });
     await saveIntros([intro]);
     // What was written holds no CryptoKey, only the JWK.
     const raw = (await getSetting('intros'))!;
@@ -86,9 +96,10 @@ describe('storage', () => {
     const [back] = await getIntros();
     expect(back!.privateKey!.extractable).toBe(false);
     const relay = new SimulatedTransport();
-    await relay.claim({ id: intro.mailboxId, token: intro.mailboxToken });
-    await sendRequest(relay, introPayload({ displayName: 'Ana' }, intro), { displayName: 'Sam' });
-    const [msg] = (await relay.inbox([{ id: intro.mailboxId, token: intro.mailboxToken }]))[intro.mailboxId]!;
+    const box = splitAddress(intro.mailboxId).box;
+    await relay.register(home, [box]);
+    await sendRequest(relay, await newHome(), introPayload({ displayName: 'Ana' }, intro), { displayName: 'Sam' });
+    const [msg] = (await relay.sync(home, { keep: [box], ack: [] })).messages[box]!;
     expect((await openHello(back!, msg!.ct))?.profile.displayName).toBe('Sam');
   });
 

@@ -17,8 +17,9 @@ import { cleanSpot } from '../schedule/spot';
 import { LIMITS_INVITE, parseWireInvite, type WireInvite } from './invites';
 import { decodeCode, encodeCode, type ConnectPayload } from '../connect/payload';
 import { helloSecret, isPublicKeyText, newPairKey, pairSecret, PUBLIC_KEY_CHARS } from '../connect/pairing';
-import { codeKey, mailboxIdFor, mailboxKey, open, seal } from './crypto';
-import type { Box, Transport } from './transport';
+import { ADDRESS, isInHome, newAddress, splitAddress, type Home } from './address';
+import { codeKey, mailboxKey, open, seal } from './crypto';
+import type { Transport } from './transport';
 
 /** One-way codes last a little under a day, leaving room for phone clocks that disagree. */
 export const INTRO_TTL_MS = 20 * 60 * 60 * 1000;
@@ -40,18 +41,14 @@ const ID = /^[A-Za-z0-9_-]{22}$/;
 const SESSION_ID = /^[A-Za-z0-9_-]{1,40}$/;
 export const MAX_SHARED_SESSIONS = 300;
 
-/** A fresh mailbox: a random token, and the ID made from it (see mailboxIdFor). */
-export async function newBox(): Promise<Box> {
-  const token = randomId();
-  return { id: await mailboxIdFor(token), token };
-}
+/** A fresh mailbox address in this device's home (registered with the relay before it's shown or used). */
+export const newBox = (home: Home): string => newAddress(home);
 
 /**
  * A new one-way code. `exportable` is for browsers that can't store a CryptoKey: the private key is then kept
  * as JWK (see canStoreCryptoKeys in storage).
  */
-export async function newIntro(now = Date.now(), { exportable = false } = {}): Promise<Intro> {
-  const box = await newBox();
+export async function newIntro(home: Home, now = Date.now(), { exportable = false } = {}): Promise<Intro> {
   const key = await newPairKey(exportable);
   const privateJwk = exportable ? await crypto.subtle.exportKey('jwk', key.privateKey) : undefined;
   return {
@@ -59,8 +56,7 @@ export async function newIntro(now = Date.now(), { exportable = false } = {}): P
     nonce: randomId(),
     publicKey: key.publicKey,
     privateKey: key.privateKey,
-    mailboxId: box.id,
-    mailboxToken: box.token,
+    mailboxId: newBox(home),
     createdAt: now,
     expiresAt: now + INTRO_TTL_MS,
   };
@@ -79,13 +75,13 @@ export function introPayload(profile: SharedProfile, intro: Intro): ConnectPaylo
 const HELLO_VERSION = 2;
 
 /** B: send a request to the person whose one-way code we read. Returns our pending connection. */
-export async function sendRequest(t: Transport, theirs: ConnectPayload, me: SharedProfile, now = Date.now()): Promise<Connection> {
+export async function sendRequest(t: Transport, home: Home, theirs: ConnectPayload, me: SharedProfile, now = Date.now()): Promise<Connection> {
   if (theirs.mode !== 'r' || !theirs.mailboxId) throw new Error('not-a-request-code');
   const nonce = randomId();
   const key = await newPairKey();
-  const box = await newBox();
-  await t.claim(box);
-  const mine = { mode: 'r' as const, nonce, publicKey: key.publicKey, mailboxId: box.id, expiresAt: now + INTRO_TTL_MS, profile: me };
+  const box = newBox(home);
+  await t.register(home, [splitAddress(box).box]);
+  const mine = { mode: 'r' as const, nonce, publicKey: key.publicKey, mailboxId: box, expiresAt: now + INTRO_TTL_MS, profile: me };
   const myCode = await encodeCode(mine);
   const hs = await helloSecret(key.privateKey, theirs, key.publicKey, theirs.publicKey);
   const sealed = await seal(await mailboxKey(hs, 'hello', theirs.mailboxId), { t: 'hello', v: HELLO_VERSION, code: myCode }, theirs.mailboxId);
@@ -96,8 +92,7 @@ export async function sendRequest(t: Transport, theirs: ConnectPayload, me: Shar
     profile: theirs.profile,
     state: 'pending-sent',
     requestedAt: now,
-    myMailboxId: box.id,
-    myMailboxToken: box.token,
+    myMailboxId: box,
     theirNonce: theirs.nonce,
     // The private key is used once, here, and then dropped: later messages use the pair secret.
     sharedSecret: await pairSecret(key.privateKey, mine, theirs),
@@ -156,13 +151,13 @@ export async function openHello(intro: Intro, ct: string, now = Date.now(), sent
 }
 
 /** A: approve a request. Sends "accept" to B and returns the connected connection. */
-export async function approveRequest(t: Transport, c: Connection, now = Date.now()): Promise<Connection> {
+export async function approveRequest(t: Transport, home: Home, c: Connection, now = Date.now()): Promise<Connection> {
   if (c.state !== 'pending-received' || !c.mailboxId || !c.sharedSecret) throw new Error('not-pending');
-  const box = await newBox();
-  await t.claim(box);
-  const ct = await seal(await mailboxKey(c.sharedSecret, 'msg', c.mailboxId), { t: 'accept', v: 1, mailbox: box.id }, c.mailboxId);
+  const box = newBox(home);
+  await t.register(home, [splitAddress(box).box]);
+  const ct = await seal(await mailboxKey(c.sharedSecret, 'msg', c.mailboxId), { t: 'accept', v: 1, mailbox: box }, c.mailboxId);
   await t.send(c.mailboxId, ct, MESSAGE_TTL_S);
-  return { ...c, state: 'connected', connectedAt: now, myMailboxId: box.id, myMailboxToken: box.token };
+  return { ...c, state: 'connected', connectedAt: now, myMailboxId: box };
 }
 
 /**
@@ -194,7 +189,7 @@ async function openPair(c: Connection, ct: string): Promise<unknown> {
 function parsePairMessage(value: unknown): PairMessage | null {
   const msg = value as Record<string, unknown> | null;
   if (!msg || typeof msg !== 'object' || msg.v !== 1) return null;
-  if (msg.t === 'accept' && typeof msg.mailbox === 'string' && ID.test(msg.mailbox)) return { t: 'accept', v: 1, mailbox: msg.mailbox };
+  if (msg.t === 'accept' && typeof msg.mailbox === 'string' && ADDRESS.test(msg.mailbox)) return { t: 'accept', v: 1, mailbox: msg.mailbox };
   if (msg.t === 'invite') {
     const invite = parseWireInvite(msg.invite);
     return invite ? { t: 'invite', v: 1, invite } : null;
@@ -219,6 +214,9 @@ export interface SyncStore {
   patch?(id: string, p: Partial<Connection>): Promise<unknown>;
   /** Invites and replies from a connected pair. `sentAt` is when the relay received it. */
   onPairMessage?(c: Connection, msg: Exclude<PairMessage, { t: 'accept' }>, sentAt: number): Promise<void>;
+  /** Message IDs handled last sync, to ack on this one (kept on the phone, so closing the app loses nothing). */
+  acks(): Promise<string[]>;
+  setAcks(ids: string[]): Promise<void>;
 }
 
 export interface SyncResult {
@@ -226,33 +224,31 @@ export interface SyncResult {
   accepted: Connection[];
   /** Invite messages handled. */
   messages: number;
+  /** The relay held some messages back (reply size cap): sync again soon. */
+  more: boolean;
 }
 
-/** Fetch every mailbox we own, apply what arrived, and clear handled or unreadable messages from the relay. */
-export async function syncOnce(t: Transport, store: SyncStore, now = Date.now()): Promise<SyncResult> {
-  const intros = (await store.intros()).filter((i) => hasKeys(i) && i.expiresAt + INTRO_KEEP_MS > now);
+/**
+ * One relay call: ack what was handled last time, keep only the mailboxes still in use (the relay drops the
+ * rest, with their mail), and fetch what's new. What's handled now is acked on the next call.
+ */
+export async function syncOnce(t: Transport, home: Home, store: SyncStore, now = Date.now()): Promise<SyncResult> {
+  const intros = (await store.intros()).filter((i) => hasKeys(i) && i.expiresAt + INTRO_KEEP_MS > now && isInHome(i.mailboxId, home));
   const conns = await store.connections();
-  const owned = conns.filter((c) => c.myMailboxId && c.myMailboxToken && !c.demo);
-  const boxes: Box[] = [
-    ...intros.map((i) => ({ id: i.mailboxId, token: i.mailboxToken })),
-    ...owned.map((c) => ({ id: c.myMailboxId!, token: c.myMailboxToken! })),
-  ];
-  const result: SyncResult = { newRequests: [], accepted: [], messages: 0 };
-  if (boxes.length === 0) return result;
+  const owned = conns.filter((c) => !c.demo && isInHome(c.myMailboxId, home));
+  const result: SyncResult = { newRequests: [], accepted: [], messages: 0, more: false };
+  const keep = [...intros.map((i) => splitAddress(i.mailboxId).box), ...owned.map((c) => splitAddress(c.myMailboxId!).box)];
+  const pendingAcks = await store.acks();
+  if (keep.length === 0 && pendingAcks.length === 0) return result;
 
-  const inbox = await t.inbox(boxes);
-  const acks = new Map<string, Box & { messageIds: string[] }>();
-  const ackOne = (box: Box, id: string) => {
-    const a = acks.get(box.id) ?? { ...box, messageIds: [] };
-    a.messageIds.push(id);
-    acks.set(box.id, a);
-  };
+  const reply = await t.sync(home, { keep, ack: pendingAcks });
+  result.more = reply.more;
+  const handled: string[] = [];
   const knownNonces = new Set(conns.map((c) => c.theirNonce).filter(Boolean));
   let waiting = conns.filter((c) => c.state === 'pending-received').length;
 
   for (const intro of intros) {
-    const box = { id: intro.mailboxId, token: intro.mailboxToken };
-    for (const m of inbox[intro.mailboxId] ?? []) {
+    for (const m of reply.messages[splitAddress(intro.mailboxId).box] ?? []) {
       // Over this sync's share: leave it on the relay for the next sync (it isn't lost).
       if (result.newRequests.length >= MAX_NEW_REQUESTS_PER_SYNC) continue;
       // Too many waiting already: turned away quietly (cleared), so a flood can't pile up on this phone.
@@ -268,19 +264,18 @@ export async function syncOnce(t: Transport, store: SyncStore, now = Date.now())
       } catch {
         continue; // storage trouble: leave it on the relay and try again next sync
       }
-      ackOne(box, m.id); // handled, repeated, junk, or over the limit: clear it either way
+      handled.push(m.id); // handled, repeated, junk, or over the limit: clear it either way
     }
   }
 
   for (const c of owned) {
-    const box = { id: c.myMailboxId!, token: c.myMailboxToken! };
-    for (const m of inbox[c.myMailboxId!] ?? []) {
+    for (const m of reply.messages[splitAddress(c.myMailboxId!).box] ?? []) {
       const sentAt = clampSentAt(m.created, now);
       const opened = await openPair(c, m.ct);
       if (opened === null) {
-        // Doesn't open with our key: junk, or meant for someone else. Clear it, or it would be downloaded and
-        // tried again on every sync until it expires (mailbox IDs are in QR codes, so anyone can post to one).
-        ackOne(box, m.id);
+        // Doesn't open with our key: junk, or meant for someone else. Clear it, or it would come back on every
+        // sync until it expires (mailbox addresses are in codes, so anyone can post to one).
+        handled.push(m.id);
         continue;
       }
       const msg = parsePairMessage(opened);
@@ -292,11 +287,11 @@ export async function syncOnce(t: Transport, store: SyncStore, now = Date.now())
             else await store.put(done);
             result.accepted.push(done);
           }
-          ackOne(box, m.id);
+          handled.push(m.id);
         } else if (msg && c.state === 'connected' && store.onPairMessage) {
           await store.onPairMessage(c, msg, sentAt);
           result.messages += 1;
-          ackOne(box, m.id);
+          handled.push(m.id);
         }
       } catch {
         // One message failing (storage trouble) must not stop the others being handled and cleared.
@@ -305,7 +300,7 @@ export async function syncOnce(t: Transport, store: SyncStore, now = Date.now())
     }
   }
 
-  if (acks.size) await t.ack([...acks.values()]);
+  await store.setAcks(handled);
   return result;
 }
 

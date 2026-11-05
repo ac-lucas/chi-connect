@@ -17,7 +17,7 @@ function real(name: string, sharing: boolean): Connection {
     id: randomId(),
     profile: { displayName: name },
     state: 'connected',
-    mailboxId: randomId(),
+    mailboxId: `${randomId()}.${randomId()}`,
     sharedSecret: randomId() + randomId(), // any base64url works for the simulated relay
     scheduleSharing: sharing,
     sharedSessionIds: [],

@@ -5,7 +5,8 @@ import { toSharedProfile } from '../model/profile';
 import type { Intro, Profile } from '../model/types';
 import { createSixDigitCode, hasKeys, INTRO_KEEP_MS, introPayload, newIntro } from '../relay/protocol';
 import { RelayError, type Transport } from '../relay/transport';
-import { canStoreCryptoKeys, getIntros, saveIntros } from '../storage/db';
+import { canStoreCryptoKeys, getHome, getIntros, saveIntros } from '../storage/db';
+import { splitAddress } from '../relay/address';
 import { announce } from '../ui/announce';
 import { useScreenHeading } from '../ui/useScreenHeading';
 
@@ -17,10 +18,11 @@ async function currentIntro(relay: Transport, now = Date.now()): Promise<Intro> 
   const kept = (await getIntros()).filter((i) => hasKeys(i) && i.expiresAt + INTRO_KEEP_MS > now);
   let intro = kept.find((i) => i.expiresAt - now > REUSE_IF_MORE_THAN_MS);
   if (!intro) {
-    intro = await newIntro(now, { exportable: !(await canStoreCryptoKeys()) });
+    const home = await getHome();
+    intro = await newIntro(home, now, { exportable: !(await canStoreCryptoKeys()) });
     kept.push(intro);
-    // Claim the mailbox now so nobody else can, before any request arrives. Fine if offline: the first sync claims it.
-    relay.claim({ id: intro.mailboxId, token: intro.mailboxToken }).catch(() => {});
+    // Register its mailbox now, so requests can arrive. Fine if offline: the next sync does it.
+    relay.register(home, [splitAddress(intro.mailboxId).box]).catch(() => {});
   }
   await saveIntros(kept.slice(-10));
   return intro;

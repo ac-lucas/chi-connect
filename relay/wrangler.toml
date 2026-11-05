@@ -7,13 +7,24 @@ compatibility_date = "2026-10-01"
 [observability]
 enabled = false
 
+# One small object per device (its mailboxes) and one per six-digit-code shard.
 [[durable_objects.bindings]]
-name = "RELAY"
-class_name = "RelayObject"
+name = "HOME"
+class_name = "HomeObject"
+
+[[durable_objects.bindings]]
+name = "CODES"
+class_name = "CodesObject"
 
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["RelayObject"]
+
+# v2: per-device homes and code shards replace the single global object (pre-launch: its test data is dropped).
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["HomeObject", "CodesObject"]
+deleted_classes = ["RelayObject"]
 
 [vars]
 # Browser origins allowed to call the relay. Update when the site name changes.

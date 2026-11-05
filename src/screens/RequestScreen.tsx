@@ -4,7 +4,7 @@ import { toSharedProfile } from '../model/profile';
 import type { Profile } from '../model/types';
 import { sendRequest } from '../relay/protocol';
 import { RelayError, type Transport } from '../relay/transport';
-import { listConnections, putConnection } from '../storage/db';
+import { getHome, listConnections, putConnection } from '../storage/db';
 import { announce } from '../ui/announce';
 import { useScreenHeading } from '../ui/useScreenHeading';
 import { ProfileCard } from './ProfileCard';
@@ -37,7 +37,7 @@ export function RequestScreen({ profile, theirs, relay, onSent, onCancel }: Prop
         onSent(existing.id);
         return;
       }
-      const c = await sendRequest(relay, theirs, toSharedProfile(profile));
+      const c = await sendRequest(relay, await getHome(), theirs, toSharedProfile(profile));
       await putConnection(c);
       announce(`Request sent to ${name}.`);
       onSent(c.id);

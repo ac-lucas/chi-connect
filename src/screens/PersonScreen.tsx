@@ -3,7 +3,7 @@ import type { Connection, Tag } from '../model/types';
 import { NotesSection } from './NotesSection';
 import { approveRequest } from '../relay/protocol';
 import { RelayError, type Transport } from '../relay/transport';
-import { listAllSchedule, removeConnection, updateConnection } from '../storage/db';
+import { listAllSchedule, removeConnection, updateConnection, getHome } from '../storage/db';
 import type { Programme } from '../programme/types';
 import { dayLabel, timeRange } from '../programme/programme';
 import { shareSessionsIfChanged } from '../schedule/overlap';
@@ -62,8 +62,8 @@ export function PersonScreen({ connection: c, myTags, justConnected, relay, prog
     setBusy(true);
     setProblem(null);
     try {
-      const done = await approveRequest(relay, c);
-      await updateConnection(c.id, { state: done.state, connectedAt: done.connectedAt, myMailboxId: done.myMailboxId, myMailboxToken: done.myMailboxToken });
+      const done = await approveRequest(relay, await getHome(), c);
+      await updateConnection(c.id, { state: done.state, connectedAt: done.connectedAt, myMailboxId: done.myMailboxId });
       announce(`You’re connected with ${name}.`);
     } catch (e) {
       const msg = e instanceof RelayError && e.problem === 'offline' ? 'You seem to be offline. Try again when you have a connection.' : 'That didn’t go through. Try again in a moment.';

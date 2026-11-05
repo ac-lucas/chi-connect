@@ -55,8 +55,6 @@ export interface Connection {
   mailboxId?: string;
   /** Our relay mailbox for this connection: where they leave messages for us. */
   myMailboxId?: string;
-  /** Proves to the relay that our mailbox is ours. Never shared. */
-  myMailboxToken?: string;
   /** Their one-time pairing number, kept to ignore a repeated request from the same code. */
   theirNonce?: string;
   /** When a request was sent or received. */
@@ -200,7 +198,6 @@ export interface Intro {
    */
   privateJwk?: JsonWebKey;
   mailboxId: string;
-  mailboxToken: string;
   createdAt: number;
   expiresAt: number;
 }
