@@ -9,6 +9,7 @@ export interface Tag {
 
 export interface ShareChoices {
   role: boolean;
+  city: boolean;
   company: boolean;
   links: boolean;
   tags: boolean;
@@ -26,6 +27,7 @@ export interface Profile {
   deviceId: string;
   displayName: string;
   role: string;
+  city: string;
   company: string;
   links: string[];
   tags: Tag[];
@@ -39,6 +41,7 @@ export interface Profile {
 export interface SharedProfile {
   displayName: string;
   role?: string;
+  city?: string;
   company?: string;
   links?: string[];
   tags?: Tag[];
@@ -119,8 +122,6 @@ export interface ScheduleItem {
   breakKind?: BreakKind;
   protectedKind?: ProtectedKind;
   inviteId?: string;
-  /** A saved session marked as Focus (F22): invites and nudges wait until it ends. */
-  focus?: boolean;
   /** Added from a wildcard suggestion (F15), for the recap. */
   fromWildcard?: boolean;
   /** Part of the ready-made sample day (src/schedule/starter.ts). Labelled Sample wherever it shows. */

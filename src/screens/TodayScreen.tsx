@@ -7,14 +7,14 @@ import { clockTime as clock, dayLabel, nextDay, programmeDays, startOfDay, timeR
 import type { Programme } from '../programme/types';
 import { planDay, type Busy, type PlannedBreak } from '../schedule/breaks';
 import { energyToday } from '../schedule/energy';
-import { inviteTitle } from '../schedule/invites';
+import { holdsInvites, inviteTitle } from '../schedule/invites';
 import type { Transport } from '../relay/transport';
 import { dismiss, putScheduleItem } from '../storage/db';
 import { announce } from '../ui/announce';
 import { useClock } from '../ui/useClock';
 import { useScreenHeading } from '../ui/useScreenHeading';
 import type { InviteDraft } from './InviteScreen';
-import { InvitesPanel } from './InvitesPanel';
+import { InvitesPanel, SimulateInvite } from './InvitesPanel';
 import { ProgrammeNote } from './ProgrammeNote';
 import { MeetupShapeView, ShapeBadge } from './ShapeCard';
 import { SuggestionsPanel } from './SuggestionsPanel';
@@ -71,8 +71,8 @@ export function TodayScreen({ name, programme, relay, myTopics, onAddSessions, o
   const namesById = useMemo(() => new Map(connections.map((c) => [c.id, c.profile.displayName])), [connections]);
   const nameOf = (id: string) => namesById.get(id) ?? 'someone';
 
-  // Invites wait while protected time or a Focus session is running (only shown as "waiting" to you).
-  const holding = items.find((i) => i.start <= now && i.end > now && (i.type === 'protected' || (i.type === 'session' && i.focus)));
+  // Invites wait during a Recharge block, and only then (shown as "waiting" to you alone).
+  const holding = items.find((i) => holdsInvites(i, now));
   const nextBreak = day === today ? (plan.breaks.find((b) => b.start > now) ?? null) : null;
 
   // From 10 minutes before a confirmed meetup until it ends: put "Display your shape" front and centre.
@@ -152,7 +152,36 @@ export function TodayScreen({ name, programme, relay, myTopics, onAddSessions, o
         </section>
       )}
 
-      <InvitesPanel invites={incoming} connections={connections} items={items} relay={relay} heldUntil={holding ? holding.end : null} nextBreak={nextBreak} />
+      <div class="actions">
+        <button type="button" class="button" onClick={() => onAddSessions(day)}>
+          Add sessions
+        </button>
+        <button type="button" class="button secondary" ref={protectBtn} aria-expanded={protecting} aria-controls="protect-form" onClick={() => setProtecting((p) => !p)}>
+          Protect some time
+        </button>
+      </div>
+
+      {/* Right after its button, so reading and Tab order follow it. */}
+      {protecting && (
+        <ProtectForm
+          day={day}
+          onAdd={async (from, minutes) => {
+            await addProtected('recharge', from, minutes);
+            closeProtect();
+          }}
+          onCancel={closeProtect}
+        />
+      )}
+
+      <InvitesPanel
+        invites={incoming}
+        connections={connections}
+        items={items}
+        relay={relay}
+        heldUntil={holding ? holding.end : null}
+        nextBreak={nextBreak}
+        onAccepted={(start) => setDay(startOfDay(start))}
+      />
 
       <SuggestionsPanel
         programme={programme}
@@ -197,28 +226,9 @@ export function TodayScreen({ name, programme, relay, myTopics, onAddSessions, o
         )}
       </section>
 
-      <div class="actions">
-        <button type="button" class="button" onClick={() => onAddSessions(day)}>
-          Add sessions
-        </button>
-        <button type="button" class="button secondary" ref={protectBtn} aria-expanded={protecting} aria-controls="protect-form" onClick={() => setProtecting((p) => !p)}>
-          Protect some time
-        </button>
-      </div>
+      {day === today && <SimulateInvite connections={connections} nextBreak={nextBreak} />}
 
-      {/* Right after its button, so reading and Tab order follow it. */}
-      {protecting && (
-        <ProtectForm
-          day={day}
-          onAdd={async (kind, from, minutes) => {
-            await addProtected(kind, from, minutes);
-            closeProtect();
-          }}
-          onCancel={closeProtect}
-        />
-      )}
-
-      <ProgrammeNote programme={programme} />
+      <ProgrammeNote programme={programme} credit={false} />
 
       {shapeFor && <MeetupShapeView inviteId={shapeFor.id} context={shapeFor.context} onClose={() => setShapeFor(null)} />}
     </section>

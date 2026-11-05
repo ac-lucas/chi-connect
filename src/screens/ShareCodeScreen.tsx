@@ -129,7 +129,7 @@ export function ShareCodeScreen({ profile, relay, onDone }: Props) {
     <section class="stack" aria-labelledby="share-heading">
       <div>
         <h2 id="share-heading" ref={heading} tabIndex={-1}>
-          Share your code
+          Share
         </h2>
         <p>
           Anyone who scans this can see what you chose to share and send you a request. You decide whether to say yes. If you don’t, they’re never told.
@@ -167,7 +167,7 @@ export function ShareCodeScreen({ profile, relay, onDone }: Props) {
       )}
 
       <section class="card stack" aria-labelledby="six-heading">
-        <h3 id="six-heading">No camera handy?</h3>
+        <h3 id="six-heading">Or read out a code</h3>
         {six && sixLeft > 0 ? (
           <>
             <p class="six-code" aria-label={`Your code: ${six.code.split('').join(' ')}`}>
@@ -182,7 +182,7 @@ export function ShareCodeScreen({ profile, relay, onDone }: Props) {
             </p>
           </>
         ) : (
-          <p>Get a six-digit code they can type in instead. It works once, for 2 minutes.</p>
+          <p>A six-digit code they can type in instead of scanning. It works once, for 2 minutes.</p>
         )}
         {problem && (
           <p class="error" role="alert">

@@ -91,4 +91,29 @@ describe('energyToday', () => {
     expect(energyToday({ level: 'charged', setAt: t('08:00') - 86_400_000 }, now)).toEqual({ level: 'up-for-it', setToday: false });
     expect(energyToday(undefined, now)).toEqual({ level: 'up-for-it', setToday: false });
   });
+
+  it('offers one recharge for a long stretch, not a new one after each accepted recharge', () => {
+    const day = [session('09:00', '10:00'), session('10:05', '11:00'), session('11:05', '12:00')];
+    const later = session('13:30', '15:00');
+    const first = planDay([...day, later], DAY, 'steady').headsUps.find((h) => h.kind === 'long-stretch');
+    expect(first && first.kind === 'long-stretch' && first.recharge).toBeTruthy();
+    const r = first!.kind === 'long-stretch' ? first!.recharge! : null;
+    const accepted: Busy = { id: 'r1', start: r!.start, end: r!.end, kind: 'protected' };
+    expect(planDay([...day, accepted, later], DAY, 'steady').headsUps.filter((h) => h.kind === 'long-stretch')).toEqual([]);
+  });
+
+  it('offers no recharge when the stretch is already followed by protected time later in the gap', () => {
+    const day = [session('09:00', '10:00'), session('10:05', '11:00'), session('11:05', '12:00')];
+    const recharge: Busy = { id: 'r2', start: t('13:00'), end: t('13:20'), kind: 'protected' };
+    expect(planDay([...day, recharge, session('14:00', '15:00')], DAY, 'steady').headsUps.filter((h) => h.kind === 'long-stretch')).toEqual([]);
+  });
+
+  it('turns the breather after a stretch into the recharge instead of adding a second break', () => {
+    const day = [session('13:15', '14:00'), session('14:05', '14:45'), session('14:50', '15:30'), session('16:30', '17:30')];
+    const plan = planDay(day, DAY, 'steady');
+    const h = plan.headsUps.find((x) => x.kind === 'long-stretch');
+    const rc = h && h.kind === 'long-stretch' ? h.recharge : undefined;
+    expect(rc?.replaces).toBe('breather');
+    expect(plan.breaks.some((b) => b.kind === 'breather' && b.start === rc!.start)).toBe(true);
+  });
 });

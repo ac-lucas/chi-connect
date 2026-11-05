@@ -8,8 +8,8 @@ import { useLive } from '../ui/useLive';
 import { announce } from '../ui/announce';
 
 /** One-tap chips for quick capture (F07). Short, about the moment, never about the person's looks or background. */
-export const CHIPS = ['Met at lunch', 'Same session', 'Same topic', 'Swap papers', 'Coffee later', 'Follow up'] as const;
-const FOLLOW_UP_CHIP = 'Follow up';
+// No "Follow up" tag: follow-ups have their own list (with a tick box), so there's only one place for them.
+export const CHIPS = ['Met at lunch', 'Same session', 'Same topic', 'Swap papers', 'Coffee later'] as const;
 const MAX_FOLLOW_UP = 200;
 
 interface Props {
@@ -50,13 +50,10 @@ export function NotesSection({ connection: c, quickCapture }: Props) {
     const clean = cleanText(text, LIMITS.note);
     if (!clean && chips.size === 0) return;
     await putNote({ id: randomId(), connectionId: c.id, text: clean, chips: [...chips], createdAt: Date.now() });
-    if (chips.has(FOLLOW_UP_CHIP) && !follow.some((f) => !f.done)) {
-      await putFollowUp({ id: randomId(), connectionId: c.id, text: `Follow up with ${name}`, done: false });
-    }
     setText('');
     setChips(new Set());
     setCaptured(true);
-    announce(chips.has(FOLLOW_UP_CHIP) ? 'Note saved, and a follow-up added.' : 'Note saved.');
+    announce('Note saved.');
     restore();
   }
 
@@ -118,6 +115,8 @@ export function NotesSection({ connection: c, quickCapture }: Props) {
         {follow.length === 0 ? (
           <p class="muted">Nothing to follow up yet.</p>
         ) : (
+          <>
+          <p class="hint">Tick one off when it’s done.</p>
           <ul class="followups">
             {follow.map((f) => (
               <li key={f.id} class={f.done ? 'done' : ''}>
@@ -142,6 +141,7 @@ export function NotesSection({ connection: c, quickCapture }: Props) {
               </li>
             ))}
           </ul>
+          </>
         )}
         <form class="followup-form" onSubmit={addFollowUp}>
           <div class="field">

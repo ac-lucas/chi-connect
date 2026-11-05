@@ -6,25 +6,26 @@ import type { Profile, SharedProfile, ShareChoices, Tag } from './types';
 export interface ProfileDraft {
   displayName: string;
   role: string;
+  city: string;
   company: string;
   links: string[];
   tags: Tag[];
   share: ShareChoices;
 }
 
-export type DraftField = 'displayName' | 'role' | 'company' | `link${number}` | 'tags';
+export type DraftField = 'displayName' | 'role' | 'city' | 'company' | `link${number}` | 'tags';
 export type DraftErrors = Partial<Record<DraftField, string>>;
 
-export const DEFAULT_SHARE: ShareChoices = { role: true, company: true, links: true, tags: true };
+export const DEFAULT_SHARE: ShareChoices = { role: true, city: true, company: true, links: true, tags: true };
 
 export function emptyDraft(): ProfileDraft {
-  return { displayName: '', role: '', company: '', links: ['', '', ''], tags: [], share: { ...DEFAULT_SHARE } };
+  return { displayName: '', role: '', city: '', company: '', links: ['', '', ''], tags: [], share: { ...DEFAULT_SHARE } };
 }
 
 export function draftFromProfile(p: Profile): ProfileDraft {
   const links = [...p.links];
   while (links.length < LIMITS.links) links.push('');
-  return { displayName: p.displayName, role: p.role, company: p.company, links, tags: [...p.tags], share: { ...p.share } };
+  return { displayName: p.displayName, role: p.role, city: p.city ?? '', company: p.company, links, tags: [...p.tags], share: { ...DEFAULT_SHARE, ...p.share } };
 }
 
 /** Clean a draft and report problems. Returns the cleaned values even when there are errors. */
@@ -45,6 +46,7 @@ export function checkDraft(d: ProfileDraft): { clean: ProfileDraft; errors: Draf
     clean: {
       displayName,
       role: cleanText(d.role, LIMITS.role),
+      city: cleanText(d.city, LIMITS.city),
       company: cleanText(d.company, LIMITS.company),
       links,
       tags: cleanTags(d.tags),
@@ -69,9 +71,10 @@ export function updateProfile(p: Profile, d: ProfileDraft, now = Date.now()): Pr
 }
 
 /** What another person receives when you connect: your name plus the fields you chose. */
-export function toSharedProfile(p: Pick<Profile, 'displayName' | 'role' | 'company' | 'links' | 'tags' | 'share'>): SharedProfile {
+export function toSharedProfile(p: Pick<Profile, 'displayName' | 'role' | 'city' | 'company' | 'links' | 'tags' | 'share'>): SharedProfile {
   const out: SharedProfile = { displayName: p.displayName };
   if (p.share.role && p.role) out.role = p.role;
+  if (p.share.city && p.city) out.city = p.city;
   if (p.share.company && p.company) out.company = p.company;
   if (p.share.links && p.links.length) out.links = [...p.links];
   if (p.share.tags && p.tags.length) out.tags = [...p.tags];

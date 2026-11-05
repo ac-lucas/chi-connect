@@ -34,7 +34,7 @@ describe('createProfile and toSharedProfile', () => {
       company: 'Somewhere',
       links: ['https://example.com/'],
       tags: [resolveTag('VR')!],
-      share: { role: true, company: false, links: false, tags: true },
+      share: { role: true, city: false, company: false, links: false, tags: true },
     });
     const shared = toSharedProfile(p);
     expect(shared).toEqual({ displayName: 'Ana', role: 'Designer', tags: [{ key: 'vr', label: 'Virtual reality' }] });

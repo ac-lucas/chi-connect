@@ -43,7 +43,14 @@ export interface PlannedBreak {
 
 export type HeadsUp =
   | { kind: 'no-lunch' }
-  | { kind: 'long-stretch'; from: number; until: number; sessions: number; recharge?: { start: number; end: number } };
+  | {
+      kind: 'long-stretch';
+      from: number;
+      until: number;
+      sessions: number;
+      /** A recharge offer. `replaces` is set when it takes the place of the breather planned there. */
+      recharge?: { start: number; end: number; replaces?: 'breather' };
+    };
 
 export interface DayPlan {
   breaks: PlannedBreak[];
@@ -107,22 +114,34 @@ export function planDay(
   const dayTo = blocks.at(-1)!.end;
   if (!mealPlaced && dayFrom < mealTo && dayTo > mealFrom) plan.headsUps.push({ kind: 'no-lunch' });
 
-  // Long stretches: sessions in a row with no breather between them.
+  plan.breaks = plan.breaks.filter((b) => !skipped.has(b.key));
+
+  // Long stretches: sessions in a row with no rest between them. Protected time is rest: it ends a stretch, and
+  // a stretch followed by protected time gets no heads-up (they've already planned their recharge). At most one
+  // recharge is offered per stretch, and if a breather is already planned right after it, the offer is to turn
+  // that breather into a recharge rather than add a second break.
+  const restOnly = (b: (typeof blocks)[number]) => b.sessions === 0 && b.restEnd;
   let run: { from: number; until: number; sessions: number } | null = null;
-  const flush = (nextStart: number | null) => {
-    if (run && run.sessions >= e.stretch) {
+  const flush = (next: (typeof blocks)[number] | null) => {
+    if (run && run.sessions >= e.stretch && !(next && restOnly(next))) {
       const r = { start: run.until + half, end: run.until + half + e.recharge * MIN };
       // Only offer a recharge when there's more day after it, and it fits before the next thing.
-      const fits = nextStart !== null && r.end <= nextStart - half;
-      plan.headsUps.push({ kind: 'long-stretch', ...run, ...(fits ? { recharge: r } : {}) });
+      const fits = next !== null && r.end <= next.start - half;
+      const breather = plan.breaks.some((b) => b.kind === 'breather' && b.start === r.start);
+      plan.headsUps.push({ kind: 'long-stretch', ...run, ...(fits ? { recharge: { ...r, ...(breather ? { replaces: 'breather' as const } : {}) } } : {}) });
     }
   };
   for (let i = 0; i < blocks.length; i++) {
     const b = blocks[i]!;
+    if (restOnly(b)) {
+      flush(b);
+      run = null;
+      continue;
+    }
     const gapBefore = i > 0 ? b.start - blocks[i - 1]!.end : Infinity;
-    const restBefore = gapBefore >= (prefs.buffer + prefs.breatherMin) * MIN;
+    const restBefore = gapBefore >= (prefs.buffer + prefs.breatherMin) * MIN || (i > 0 && blocks[i - 1]!.restEnd);
     if (!run || restBefore) {
-      flush(b.start);
+      flush(b);
       run = { from: b.start, until: b.end, sessions: b.sessions };
     } else {
       run.until = b.end;
@@ -130,7 +149,5 @@ export function planDay(
     }
   }
   flush(null);
-
-  plan.breaks = plan.breaks.filter((b) => !skipped.has(b.key));
   return plan;
 }

@@ -14,6 +14,7 @@ export function toVCard(connections: Connection[], notes: Note[] = []): string {
       const lines = ['BEGIN:VCARD', 'VERSION:3.0', `FN:${vEsc(p.displayName)}`, `N:${vEsc(p.displayName)};;;;`];
       if (p.company) lines.push(`ORG:${vEsc(p.company)}`);
       if (p.role) lines.push(`TITLE:${vEsc(p.role)}`);
+      if (p.city) lines.push(`ADR:;;;${vEsc(p.city)};;;`);
       for (const l of p.links ?? []) lines.push(`URL:${vEsc(l)}`);
       const n = notes.filter((x) => x.connectionId === c.id).map((x) => [x.chips.join(', '), x.text].filter(Boolean).join(': '));
       if (n.length) lines.push(`NOTE:${vEsc(n.join(' / '))}`);
@@ -34,13 +35,13 @@ const row = (cells: (string | number | undefined)[]) => cells.map(cell).join(','
 const isoDate = (t?: number) => (t ? new Date(t).toISOString().slice(0, 10) : '');
 
 export function toCsv(connections: Connection[], notes: Note[], followUps: FollowUp[]): string {
-  const lines = [row(['Name', 'Role', 'Company', 'Links', 'Topics', 'Connected', 'Notes', 'Follow-ups', 'Demo'])];
+  const lines = [row(['Name', 'Role', 'Company', 'City', 'Links', 'Topics', 'Connected', 'Notes', 'Follow-ups', 'Demo'])];
   for (const c of real(connections)) {
     const p = c.profile;
     const n = notes.filter((x) => x.connectionId === c.id).map((x) => [x.chips.join(', '), x.text].filter(Boolean).join(': '));
     const f = followUps.filter((x) => x.connectionId === c.id).map((x) => `${x.done ? '[done] ' : ''}${x.text}${x.due ? ` (by ${isoDate(x.due)})` : ''}`);
     lines.push(
-      row([p.displayName, p.role, p.company, (p.links ?? []).join(' '), (p.tags ?? []).map((t) => t.label).join('; '), isoDate(c.connectedAt), n.join(' | '), f.join(' | '), c.demo ? 'yes' : '']),
+      row([p.displayName, p.role, p.company, p.city, (p.links ?? []).join(' '), (p.tags ?? []).map((t) => t.label).join('; '), isoDate(c.connectedAt), n.join(' | '), f.join(' | '), c.demo ? 'yes' : '']),
     );
   }
   return `${lines.join('\r\n')}\r\n`;

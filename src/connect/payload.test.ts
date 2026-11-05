@@ -31,6 +31,7 @@ const typical: SharedProfile = {
   displayName: 'Ana Lucía Ortega',
   role: 'UX researcher',
   company: 'Somewhere University',
+  city: 'Valparaíso',
   links: ['https://example.com/ana'],
   tags: ['VR', 'Haptics', 'Slow tech', 'Accessibility'].map((t) => resolveTag(t)!),
 };
@@ -41,6 +42,7 @@ const worst: SharedProfile = {
   displayName: rand(LIMITS.displayName, '山田太郎花子一二三四五六七八九十'),
   role: rand(LIMITS.role, 'abcdefghijklmnopqrstuvwxyz0123456789'),
   company: rand(LIMITS.company, 'abcdefghijklmnopqrstuvwxyz0123456789'),
+  city: rand(LIMITS.city, 'abcdefghijklmnopqrstuvwxyz'),
   links: Array.from({ length: LIMITS.links }, () => `https://${rand(20, 'abcdefghij')}.com/${rand(170, 'abcdefghijklmnopqrstuvwxyz0123456789')}`),
   tags: Array.from({ length: LIMITS.tags }, () => resolveTag(rand(LIMITS.tagLabel, 'abcdefghijklmnopqrstuvwxyz'))!),
 };

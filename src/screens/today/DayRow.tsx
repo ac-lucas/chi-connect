@@ -6,7 +6,7 @@ import type { PlannedBreak } from '../../schedule/breaks';
 import { cancelInvite, declineInvite, inviteTitle } from '../../schedule/invites';
 import { alsoGoing, namesList } from '../../schedule/overlap';
 import type { Transport } from '../../relay/transport';
-import { deleteScheduleItem, putScheduleItem, skipBreak } from '../../storage/db';
+import { deleteScheduleItem, skipBreak } from '../../storage/db';
 import { announce } from '../../ui/announce';
 import { keepingFocus } from '../../ui/focus';
 import { ShapeBadge } from '../ShapeCard';
@@ -36,11 +36,6 @@ const badge = (label: string) => (
 async function removeItem(item: ScheduleItem) {
   await deleteScheduleItem(item.id);
   announce(`Removed ${item.title}.`);
-}
-
-async function toggleFocus(item: ScheduleItem) {
-  await putScheduleItem({ ...item, focus: !item.focus });
-  announce(item.focus ? `Focus off for ${item.title}.` : `Focus on for ${item.title}. Invites wait until it ends.`);
 }
 
 async function skip(b: PlannedBreak) {
@@ -101,20 +96,18 @@ export function DayRow({ r, now, connections, nameOf, relay, onInviteFromSession
           <p class="also-going">
             <span aria-hidden="true">◆ </span>
             Also going: {namesList(going)}.{' '}
-            <button type="button" class="button quiet inline" onClick={() => onInviteFromSession(r.item, going.map((g) => g.id))}>
-              Sit together?
-            </button>
+            {r.item.end > now + MIN_INVITE_MS && (
+              <button type="button" class="button quiet inline" onClick={() => onInviteFromSession(r.item, going.map((g) => g.id))}>
+                Sit together?
+              </button>
+            )}
           </p>
         )}
-        {r.kind === 'session' && r.item.focus && <p class="hint">Focus: invites and nudges wait until it ends.</p>}
-        {r.kind === 'protected' && r.item.protectedKind !== 'focus' && <p class="hint">{PROTECT_LABELS[r.item.protectedKind as 'recharge' | 'off']?.line}</p>}
+        {r.kind === 'protected' && <p class="hint">{PROTECT_LABELS[r.item.protectedKind as 'recharge' | 'off']?.line}</p>}
       </div>
       <div class="day-actions">
         {r.kind === 'session' && (
           <>
-            <button type="button" class="button quiet" aria-pressed={!!r.item.focus} aria-label={`Focus on ${r.item.title}`} onClick={() => void toggleFocus(r.item)}>
-              Focus
-            </button>
             {r.item.end > now + MIN_INVITE_MS && (
               <button type="button" class="button quiet" aria-label={`Invite someone to ${r.item.title}`} onClick={() => onInviteFromSession(r.item)}>
                 Invite

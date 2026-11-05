@@ -62,6 +62,8 @@ export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
   // recipients drop invites whose start has passed, so never send one that starts in the past.
   const start = Math.max(plannedStart, Math.ceil((Date.now() + MIN_LEAD_MS) / 60_000) * 60_000);
   const tooLate = end <= start;
+  // What the screen shows: the real time, never a range that ends before it starts.
+  const shownStart = tooLate ? plannedStart : start;
   const sittingTogether = isSession && kind === 'sit-together';
   const place = sittingTogether
     ? draft.room // the picker is hidden for this: never send a place the screen didn't show
@@ -141,8 +143,8 @@ export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
           Invite someone
         </h2>
         <p class="muted">
-          <span aria-hidden="true">{timeRange(start, end)}</span>
-          <span class="visually-hidden">{timeRangeSpoken(start, end)}</span>
+          <span aria-hidden="true">{timeRange(shownStart, end)}</span>
+          <span class="visually-hidden">{timeRangeSpoken(shownStart, end)}</span>
           {draft.sessionTitle && ` · ${draft.sessionTitle}`}
         </p>
       </div>

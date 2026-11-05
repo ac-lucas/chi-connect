@@ -237,7 +237,7 @@ export function ConnectScreen({ profile, relay, initialCode, onOneWayCode, onCon
     <section class="stack" aria-labelledby="connect-heading">
       <div>
         <h2 id="connect-heading" ref={heading} tabIndex={-1}>
-          Connect face to face
+          Connect
         </h2>
         {!theirs && (
           <p>

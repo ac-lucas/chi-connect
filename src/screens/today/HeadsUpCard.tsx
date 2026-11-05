@@ -22,12 +22,16 @@ export function HeadsUpCard({ h, onRecharge, onEdit }: { h: HeadsUp; onRecharge:
     <div class="card stack heads-up">
       <p>
         <strong>Heads-up:</strong> back-to-back from {clock(h.from)} to {clock(h.until)}.
-        {h.recharge ? ` Want a ${mins}-minute recharge at ${clock(h.recharge.start)}?` : ' Pace yourself.'}
+        {!h.recharge
+          ? ' Pace yourself.'
+          : h.recharge.replaces === 'breather'
+            ? ` Turn the ${clock(h.recharge.start)} breather into a ${mins}-minute recharge? Invites wait until it’s over.`
+            : ` Want a ${mins}-minute recharge at ${clock(h.recharge.start)}?`}
       </p>
       {h.recharge && (
         <div class="actions">
           <button type="button" class="button secondary" onClick={() => onRecharge(h.recharge!.start, mins)}>
-            Protect a recharge
+            {h.recharge.replaces === 'breather' ? 'Make it a recharge' : 'Protect a recharge'}
           </button>
         </div>
       )}

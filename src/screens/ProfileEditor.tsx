@@ -16,7 +16,8 @@ interface Props {
 
 const SHARE_LABELS: Record<keyof ShareChoices, string> = {
   role: 'What you do',
-  company: 'Where you’re from',
+  company: 'Company or organisation',
+  city: 'City',
   links: 'Links',
   tags: 'Topics',
 };
@@ -71,7 +72,8 @@ export function ProfileEditor({ initial, mode, onSave, onCancel }: Props) {
         </h2>
         {mode === 'create' && (
           <p class="lede">
-            Takes a minute. Only your name is required. Everything stays on this phone until you connect with someone.
+            Takes a minute. Only your name is required. Your profile lives on this phone, and the people you connect
+            with get only the parts you choose to share.
           </p>
         )}
       </div>
@@ -108,9 +110,9 @@ export function ProfileEditor({ initial, mode, onSave, onCancel }: Props) {
       </div>
 
       <div class="field">
-        <label for="company">Where you’re from</label>
+        <label for="company">Company or organisation (optional)</label>
         <span class="hint" id="company-hint">
-          A university, company or city. Whatever you’re happy to share.
+          For example: a university, lab or studio.
         </span>
         <input
           id="company"
@@ -123,9 +125,29 @@ export function ProfileEditor({ initial, mode, onSave, onCancel }: Props) {
         />
       </div>
 
+      <div class="field">
+        <label for="city">City (optional)</label>
+        <input
+          id="city"
+          type="text"
+          autocomplete="address-level2"
+          maxLength={LIMITS.city}
+          value={draft.city}
+          onInput={(e) => set('city', e.currentTarget.value)}
+        />
+      </div>
+
       <fieldset class="stack">
         <legend>Links (optional)</legend>
         <p class="hint">A website, portfolio or social profile. Up to {LIMITS.links}.</p>
+        <p class="hint">
+          {/* linkedin.com/in/me/ is meant to open the signed-in person's own profile (verify). It's a plain link:
+              nothing is sent to LinkedIn by this app, and the app never signs in anywhere. */}
+          <a href="https://www.linkedin.com/in/me/" target="_blank" rel="noopener noreferrer">
+            Open your LinkedIn profile<span class="visually-hidden"> (opens in a new tab)</span>
+          </a>
+          , copy its address, then paste it below.
+        </p>
         {draft.links.map((link, i) => (
           <div class="field" key={i}>
             <label for={`link${i}`}>Link {i + 1}</label>

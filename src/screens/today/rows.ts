@@ -14,7 +14,7 @@ export type InviteRow = Extract<Row, { kind: 'invite' }>;
 
 export const PROTECT_LABELS: Record<Exclude<ProtectedKind, 'focus'>, { label: string; glyph: string; line: string }> = {
   recharge: { label: 'Recharge', glyph: '■', line: 'Downtime. Invites wait until it’s over.' },
-  off: { label: 'Off', glyph: '⏸', line: 'Everything waits. Nobody sees why.' },
+  off: { label: 'Off', glyph: '⏸', line: 'Time off.' }, // no longer offered; kept so older blocks still show
 };
 
 /** Put the day's items and planned breaks in time order. */
@@ -35,14 +35,14 @@ export const rowKey = (r: Row) => (r.kind === 'break' ? r.brk.key : r.item.id);
 
 export function rowGlyph(r: Row): string {
   if (r.kind === 'invite') return '◆';
-  if (r.kind === 'session') return r.item.focus ? '◉' : '▲';
+  if (r.kind === 'session') return '▲';
   if (r.kind === 'protected') return PROTECT_LABELS[r.item.protectedKind as 'recharge' | 'off']?.glyph ?? '■';
   return r.brk.kind === 'meal' ? '◒' : '○';
 }
 
 export function rowKindLabel(r: Row): string {
   if (r.kind === 'invite') return r.invite ? `Social · ${KIND_INFO[r.invite.kind].label}` : 'Social';
-  if (r.kind === 'session') return r.item.focus ? 'Sprint, focus' : 'Sprint';
+  if (r.kind === 'session') return 'Sprint';
   if (r.kind === 'protected') return 'Protected';
   return r.brk.kind === 'meal' ? 'Lunch' : 'Breather';
 }

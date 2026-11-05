@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import type { Connection, Invite, ScheduleItem } from '../model/types';
-import { overlaps, timeRange, timeRangeSpoken, clockTime } from '../programme/programme';
+import { clockTime, dayLabel, overlaps, startOfDay, timeRange, timeRangeSpoken } from '../programme/programme';
 import { describeSpot } from '../schedule/spot';
 import { acceptInvite, declineInvite, KIND_INFO, simulateIncoming } from '../schedule/invites';
 import type { Transport } from '../relay/transport';
@@ -14,19 +14,20 @@ interface Props {
   connections: Connection[];
   items: ScheduleItem[];
   relay: Transport | null;
-  /** Set while protected time or a Focus session is running: new invites wait until it ends. */
+  /** Set during a Recharge block: new invites wait until it ends. */
   heldUntil: number | null;
   /** Where a simulated invite can go (the next suggested break today). */
   nextBreak: PlannedBreak | null;
+  /** After a yes: show the day the meetup is on. */
+  onAccepted?: (start: number) => void;
 }
 
 const clock = clockTime;
 
 /** Incoming invites with Yes and Not now. Answering no tells nobody. */
-export function InvitesPanel({ invites, connections, items, relay, heldUntil, nextBreak }: Props) {
+export function InvitesPanel({ invites, connections, items, relay, heldUntil, onAccepted }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
-  const demo = connections.filter((c) => c.demo && c.state === 'connected');
 
   if (heldUntil !== null && invites.length) {
     return (
@@ -41,7 +42,8 @@ export function InvitesPanel({ invites, connections, items, relay, heldUntil, ne
     setProblem(null);
     try {
       await acceptInvite(relay, i);
-      announce(`Added: ${KIND_INFO[i.kind].label} with ${i.senderName}, ${timeRangeSpoken(i.start, i.end)}${i.place ? `, ${i.place}` : ''}.`);
+      onAccepted?.(i.start);
+      announce(`Added to ${dayLabel(i.start, 'long')}: ${KIND_INFO[i.kind].label} with ${i.senderName}, ${timeRangeSpoken(i.start, i.end)}${i.place ? `, ${i.place}` : ''}.`);
     } catch {
       const msg = 'That didn’t go through. You might be offline. Try again in a moment.';
       setProblem(msg); // shown in a role=alert, which is read out: don't announce it twice
@@ -55,20 +57,6 @@ export function InvitesPanel({ invites, connections, items, relay, heldUntil, ne
     announce('Removed. Nobody is told.');
   }
 
-  async function simulate() {
-    const from = demo[Math.floor(Math.random() * demo.length)]!;
-    const start = nextBreak ? nextBreak.start : Math.ceil((Date.now() + 30 * 60_000) / (15 * 60_000)) * 15 * 60_000;
-    const end = nextBreak ? nextBreak.end : start + 30 * 60_000;
-    const meal = nextBreak?.kind === 'meal';
-    await simulateIncoming(from, {
-      kind: meal ? 'meal' : 'break-together',
-      start,
-      end,
-      place: meal ? 'Lunch hall' : 'Courtyard benches',
-      spot: meal ? undefined : { side: 'left', byDoor: true },
-    });
-    announce(`Simulated invite from ${from.profile.displayName}.`);
-  }
 
   return (
     <section class="stack" aria-labelledby={invites.length > 0 ? 'invites-heading' : undefined} aria-label={invites.length > 0 ? undefined : 'Invites'}>
@@ -85,6 +73,8 @@ export function InvitesPanel({ invites, connections, items, relay, heldUntil, ne
                 {i.simulated && <span class="badge"><span class="visually-hidden">, </span>Simulated</span>}
               </h4>
               <p class="day-time">
+                {/* Always say which day: an invite can be for a day other than the one you're looking at. */}
+                {startOfDay(i.start) === startOfDay(Date.now()) ? 'Today' : dayLabel(i.start, 'long')},{' '}
                 <span aria-hidden="true">{timeRange(i.start, i.end)}</span>
                 <span class="visually-hidden">{timeRangeSpoken(i.start, i.end)}</span>
               </p>
@@ -113,18 +103,36 @@ export function InvitesPanel({ invites, connections, items, relay, heldUntil, ne
           {problem}
         </p>
       )}
-      {invites.length === 0 && demo.length > 0 && (
-        <div data-row class="card stack try-it">
-          <p>
-            <strong>Trying this on your own?</strong> See what it’s like to get an invite.
-          </p>
-          <div class="actions">
-            <button type="button" class="button secondary" onClick={() => void simulate()}>
-              Simulate an invite from a demo person
-            </button>
-          </div>
-        </div>
-      )}
     </section>
+  );
+}
+
+/** A small, clearly labelled control so someone trying the app alone can receive an invite from a demo person. */
+export function SimulateInvite({ connections, nextBreak }: { connections: Connection[]; nextBreak: PlannedBreak | null }) {
+  const demo = connections.filter((c) => c.demo && c.state === 'connected');
+  if (!demo.length) return null;
+  async function simulate() {
+    const from = demo[Math.floor(Math.random() * demo.length)]!;
+    const start = nextBreak ? nextBreak.start : Math.ceil((Date.now() + 30 * 60_000) / (15 * 60_000)) * 15 * 60_000;
+    const end = nextBreak ? nextBreak.end : start + 30 * 60_000;
+    const meal = nextBreak?.kind === 'meal';
+    await simulateIncoming(from, {
+      kind: meal ? 'meal' : 'break-together',
+      start,
+      end,
+      place: meal ? 'Lunch hall' : 'Courtyard benches',
+      spot: meal ? undefined : { side: 'left', byDoor: true },
+    });
+    announce(`Simulated invite from ${from.profile.displayName}. It’s at the top of Today.`);
+  }
+  return (
+    <div class="actions">
+      <button type="button" class="button quiet" onClick={() => void simulate()}>
+        Simulate an invite
+        <span class="badge">
+          <span class="visually-hidden">, </span>Demo
+        </span>
+      </button>
+    </div>
   );
 }

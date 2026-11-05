@@ -23,7 +23,9 @@ export function EnergyPicker({ level, setToday, name, now }: { level: EnergyLeve
     setChanging(true);
     await setSetting('energy', { level: l, setAt: Date.now() });
   }
-  function done() {
+  async function done() {
+    // On first open nothing is saved yet: Done confirms what's selected (the default), no need to pick twice.
+    if (!setToday) await setSetting('energy', { level, setAt: Date.now() });
     setChanging(false);
     setTimeout(() => changeBtn.current?.focus(), 0); // keep focus where the choices were
     announce(`Energy: ${ENERGY[level].label}. Your day’s been updated.`);
@@ -49,7 +51,6 @@ export function EnergyPicker({ level, setToday, name, now }: { level: EnergyLeve
   return (
     <fieldset class="energy" ref={group}>
       <legend>{setToday ? 'Today’s energy' : `${greeting(new Date(now).getHours())}, ${name}. How’s your energy?`}</legend>
-      {!setToday && <p class="hint">Up for it is the default. Change it whenever.</p>}
       <div class="energy-options">
         {ENERGY_ORDER.map((l) => (
           <label key={l} class={`energy-option${l === level ? ' chosen' : ''}`}>
@@ -62,13 +63,11 @@ export function EnergyPicker({ level, setToday, name, now }: { level: EnergyLeve
           </label>
         ))}
       </div>
-      {setToday && (
-        <div class="actions">
-          <button type="button" class="button secondary" onClick={done}>
-            Done
-          </button>
-        </div>
-      )}
+      <div class="actions">
+        <button type="button" class="button secondary" onClick={() => void done()}>
+          Done
+        </button>
+      </div>
     </fieldset>
   );
 }

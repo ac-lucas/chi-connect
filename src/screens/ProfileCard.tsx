@@ -3,7 +3,7 @@ import type { SharedProfile } from '../model/types';
 /** Shows a profile as another person would see it. All text is rendered as text, never as HTML. */
 export function ProfileCard({ profile, headingLevel = 3 }: { profile: SharedProfile; headingLevel?: 2 | 3 }) {
   const H = headingLevel === 2 ? 'h2' : 'h3';
-  const line = [profile.role, profile.company].filter(Boolean).join(' · ');
+  const line = [profile.role, profile.company, profile.city].filter(Boolean).join(' · ');
   return (
     <div class="card stack">
       <div>

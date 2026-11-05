@@ -1,4 +1,4 @@
-// Protect some time (F22): Recharge or Off. Opening it moves focus in; the caller returns focus on close.
+// Protect some time (F22): a Recharge block, the only time invites wait. Opening it moves focus in; the caller returns focus on close.
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { atMinutes, clockTime as clock } from '../../programme/programme';
 import { PROTECT_LABELS } from './rows';
@@ -9,12 +9,11 @@ export function ProtectForm({
   onCancel,
 }: {
   day: number;
-  onAdd: (kind: 'recharge' | 'off', from: number, minutes: number) => Promise<void>;
+  onAdd: (from: number, minutes: number) => Promise<void>;
   onCancel: () => void;
 }) {
   const slots = Array.from({ length: (21 - 7) * 4 + 1 }, (_, i) => atMinutes(day, 7 * 60 + i * 15));
   const nowSlot = slots.find((s) => s > Date.now()) ?? slots[0]!;
-  const [kind, setKind] = useState<'recharge' | 'off'>('recharge');
   const [from, setFrom] = useState(nowSlot);
   const [minutes, setMinutes] = useState(30);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -27,24 +26,16 @@ export function ProtectForm({
       aria-labelledby="protect-heading"
       onSubmit={(e) => {
         e.preventDefault();
-        void onAdd(kind, from, minutes);
+        void onAdd(from, minutes);
       }}
     >
       <h3 id="protect-heading" ref={heading} tabIndex={-1}>
         Protect some time
       </h3>
-      <p class="hint">Only you see this. To anyone else you’re simply not free.</p>
-      <fieldset>
-        <legend>Kind</legend>
-        {(['recharge', 'off'] as const).map((k) => (
-          <label class="check" key={k}>
-            <input type="radio" name="protect-kind" checked={kind === k} onChange={() => setKind(k)} />
-            <span>
-              <strong>{PROTECT_LABELS[k].label}</strong>: {PROTECT_LABELS[k].line}
-            </span>
-          </label>
-        ))}
-      </fieldset>
+      <p class="hint">
+        A {PROTECT_LABELS.recharge.label.toLowerCase()} block. {PROTECT_LABELS.recharge.line} Only you see this. To anyone else
+        you’re simply not free.
+      </p>
       <div class="field">
         <label for="protect-from">From</label>
         <select id="protect-from" value={from} onChange={(e) => setFrom(Number(e.currentTarget.value))}>

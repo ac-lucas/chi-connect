@@ -4,6 +4,7 @@
 export const LIMITS = {
   displayName: 60,
   role: 80,
+  city: 60,
   company: 80,
   link: 200,
   links: 3,

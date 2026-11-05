@@ -1,20 +1,24 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { toSharedProfile } from '../model/profile';
 import type { Profile } from '../model/types';
+import type { Programme } from '../programme/types';
 import { getSetting, listCatchUp, setSetting, wipeEverything } from '../storage/db';
 import { announce } from '../ui/announce';
 import { useScreenHeading } from '../ui/useScreenHeading';
 import { useLive } from '../ui/useLive';
 import { ProfileCard } from './ProfileCard';
+import { ProgrammeNote } from './ProgrammeNote';
 
 interface Props {
   profile: Profile;
   onEdit: () => void;
   onCatchUp: () => void;
   onRecap: () => void;
+  /** For the programme data credit, which lives at the end of this screen. */
+  programme?: Programme | null;
 }
 
-export function MeScreen({ profile, onEdit, onCatchUp, onRecap }: Props) {
+export function MeScreen({ profile, onEdit, onCatchUp, onRecap, programme }: Props) {
   const heading = useScreenHeading<HTMLHeadingElement>();
   const live = useLive(
     async () => ({ quiet: !!(await getSetting('quietMode')), snoozeUntil: (await getSetting('snoozeUntil')) ?? 0, catchUp: (await listCatchUp()).length }),
@@ -47,11 +51,11 @@ export function MeScreen({ profile, onEdit, onCatchUp, onRecap }: Props) {
 
   async function toggleQuiet(on: boolean) {
     await setSetting('quietMode', on);
-    announce(on ? 'Quiet mode on. No nudges or suggestions.' : 'Quiet mode off.');
+    announce(on ? 'Suggestions paused.' : 'Suggestions are back on.');
   }
   async function unsnooze() {
     await setSetting('snoozeUntil', 0);
-    announce('Nudges are back on.');
+    announce('Suggestions are back on.');
   }
 
   const snoozed = snoozeUntil > Date.now();
@@ -83,13 +87,11 @@ export function MeScreen({ profile, onEdit, onCatchUp, onRecap }: Props) {
         </div>
       </section>
 
-      <section class="stack" aria-labelledby="me-nudges">
-        <h3 id="me-nudges">Nudges</h3>
+      <section class="stack" aria-labelledby="me-suggestions">
+        <h3 id="me-suggestions">Suggestions</h3>
         <label class="check">
           <input type="checkbox" checked={quiet} onChange={(e) => void toggleQuiet(e.currentTarget.checked)} />
-          <span>
-            <strong>Quiet mode</strong>: no nudges, wildcards or icebreakers. Invites still arrive.
-          </span>
+          <span>Pause suggestions (wildcards and icebreakers). Invites from people still arrive.</span>
         </label>
         {snoozed && (
           <p>
@@ -138,6 +140,8 @@ export function MeScreen({ profile, onEdit, onCatchUp, onRecap }: Props) {
           </div>
         )}
       </section>
+
+      {programme && <ProgrammeNote programme={programme} />}
     </section>
   );
 }

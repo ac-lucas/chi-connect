@@ -22,7 +22,7 @@ export function PeopleScreen({ connections, myTags, onConnect, onOpen, onShare, 
 
   const row = (c: Connection) => {
     const shared = sharedTags(myTags, c.profile.tags ?? []);
-    const line = [c.profile.role, c.profile.company].filter(Boolean).join(' · ');
+    const line = [c.profile.role, c.profile.company, c.profile.city].filter(Boolean).join(' · ');
     return (
       <li key={c.id}>
         <button type="button" class="person-row" onClick={() => onOpen(c.id)}>
@@ -46,17 +46,19 @@ export function PeopleScreen({ connections, myTags, onConnect, onOpen, onShare, 
       </h2>
 
       <div class="actions">
-        <button type="button" class="button" onClick={onConnect}>
-          Connect face to face
-        </button>
-        {onShare && (
-          <button type="button" class="button secondary" onClick={onShare}>
-            Share your code
-          </button>
-        )}
-        {onEnterCode && (
-          <button type="button" class="button secondary" onClick={onEnterCode}>
-            Enter a code
+        {onShare && onEnterCode ? (
+          <>
+            <button type="button" class="button" onClick={onShare}>
+              Share
+            </button>
+            <button type="button" class="button secondary" onClick={onEnterCode}>
+              Enter a code
+            </button>
+          </>
+        ) : (
+          // Without a relay, sharing and codes can't work: both phones scan each other instead.
+          <button type="button" class="button" onClick={onConnect}>
+            Connect
           </button>
         )}
       </div>
@@ -72,7 +74,7 @@ export function PeopleScreen({ connections, myTags, onConnect, onOpen, onShare, 
       {real.length === 0 ? (
         <div class="card stack">
           <p class="lede">Nobody here yet. That’s fine.</p>
-          <p>When you meet someone, you scan each other’s code and they show up here, along with the topics you share.</p>
+          <p>Meet someone, swap codes, and they show up here with the topics you share.</p>
         </div>
       ) : (
         <section aria-labelledby="your-people" class="stack">
@@ -91,7 +93,6 @@ export function PeopleScreen({ connections, myTags, onConnect, onOpen, onShare, 
       {demo.length > 0 && (
         <section aria-labelledby="demo-people" class="stack">
           <h3 id="demo-people">Demo people</h3>
-          <p class="hint">Made up, so you can try everything on your own. Remove them any time.</p>
           <ul class="people">{demo.map(row)}</ul>
         </section>
       )}

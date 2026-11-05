@@ -61,7 +61,7 @@ export function TagPicker({ value, onChange }: Props) {
         )}
       </div>
 
-      <div class="field">
+      <div class="field topic-search">
         <label for="tag-search">Find or add a topic</label>
         <input
           id="tag-search"

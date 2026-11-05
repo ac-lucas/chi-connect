@@ -45,8 +45,8 @@ const ShareCodeScreen = lazy(() => import('./screens/ShareCodeScreen').then((m) 
 /** Page titles per screen (WCAG 2.4.2), so tabs, history and screen readers say where you are. */
 const SCREEN_TITLES: Record<Exclude<Screen['kind'], 'tabs'>, string> = {
   edit: 'Edit profile',
-  connect: 'Connect face to face',
-  share: 'Share your code',
+  connect: 'Connect',
+  share: 'Share',
   sessions: 'Add sessions',
   invite: 'Invite someone',
   catchup: 'Catch up later',
@@ -252,6 +252,7 @@ export function App() {
         onEdit={() => setScreen({ kind: 'edit' })}
         onCatchUp={() => setScreen({ kind: 'catchup' })}
         onRecap={() => setScreen({ kind: 'recap' })}
+        programme={programme}
       />
     );
   }

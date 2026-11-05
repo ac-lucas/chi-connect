@@ -5,6 +5,11 @@ import type { Connection, Invite, InviteKind, MeetingSpot, ScheduleItem } from '
 import type { WireInvite } from '../relay/invites';
 import { sendPairMessage, type PairMessage } from '../relay/protocol';
 import type { Transport } from '../relay/transport';
+/** Invites wait (quietly, only you see it) during a Recharge block, and at no other time. */
+export function holdsInvites(i: ScheduleItem, now = Date.now()): boolean {
+  return i.type === 'protected' && i.protectedKind === 'recharge' && i.start <= now && i.end > now;
+}
+
 import { deleteInvite, deleteScheduleItem, getConnection, getInvite, listInvites, putInvite, putScheduleItem } from '../storage/db';
 
 export const KIND_INFO: Record<InviteKind, { label: string; glyph: string; line: (i: { sessionTitle?: string; place?: string }) => string }> = {

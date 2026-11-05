@@ -48,7 +48,7 @@ interface Wire {
   k: string;
   x: number; // expiry, epoch seconds
   b?: string;
-  p: { d: string; r?: string; c?: string; l?: string[]; t?: string[] };
+  p: { d: string; r?: string; y?: string; c?: string; l?: string[]; t?: string[] };
 }
 
 export type DecodeProblem = 'too-long' | 'not-a-code' | 'unreadable' | 'newer-version' | 'older-version' | 'expired';
@@ -73,6 +73,7 @@ function toWire(p: ConnectPayload): Wire {
   const w: Wire = { v: PAYLOAD_VERSION, m: p.mode, n: p.nonce, k: p.publicKey, x: Math.floor(p.expiresAt / 1000), p: { d: p.profile.displayName } };
   if (p.mailboxId) w.b = p.mailboxId;
   if (p.profile.role) w.p.r = p.profile.role;
+  if (p.profile.city) w.p.y = p.profile.city;
   if (p.profile.company) w.p.c = p.profile.company;
   if (p.profile.links?.length) w.p.l = p.profile.links.map((l) => l.replace(/^https:\/\//, ''));
   if (p.profile.tags?.length) w.p.t = p.profile.tags.map(tagToWire);
@@ -167,7 +168,10 @@ export async function fitLink(
     if (enc.encode(link).byteLength <= QR_BUDGET_BYTES) return { link, payload, leftOut };
     if (profile.links?.length) leftOut.push(profile.links.pop()!.replace(/^https:\/\//, ''));
     else if (profile.tags?.length) leftOut.push(profile.tags.pop()!.label);
-    else if (profile.company) {
+    else if (profile.city) {
+      leftOut.push(profile.city);
+      profile.city = undefined;
+    } else if (profile.company) {
       leftOut.push(profile.company);
       profile.company = undefined;
     } else if (profile.role) {
@@ -237,6 +241,8 @@ export async function decodeCode(input: string, now = Date.now()): Promise<Conne
   const profile: SharedProfile = { displayName };
   const role = cleanText(p.r, LIMITS.role);
   if (role) profile.role = role;
+  const city = cleanText(p.y, LIMITS.city);
+  if (city) profile.city = city;
   const company = cleanText(p.c, LIMITS.company);
   if (company) profile.company = company;
   if (Array.isArray(p.l)) {

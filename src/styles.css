@@ -202,7 +202,7 @@ details summary { cursor: pointer; min-height: var(--min-target); display: flex;
 .segmented { flex-wrap: wrap; }
 .day { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
 .day-row {
-  display: grid; grid-template-columns: 2rem 1fr auto; gap: 0.75rem; align-items: start;
+  display: grid; grid-template-columns: 2rem 1fr; gap: 0.5rem 0.75rem; align-items: start;
   padding: 0.75rem; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface);
 }
 .day-row.is-break { border-style: dashed; background: transparent; }
@@ -212,8 +212,17 @@ details summary { cursor: pointer; min-height: var(--min-target); display: flex;
 .day-kind { color: var(--muted); font-weight: 400; }
 .day-title { margin: 0; }
 .day-body > * + * { margin-top: 0.125rem; }
-.day-actions { display: flex; flex-direction: column; align-items: flex-end; }
+.day-actions:empty { display: none; }
+/* Actions sit in a row under the text, so titles get the full width and nothing is squeezed to the side. */
+.day-actions { grid-column: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 .day-actions .button { min-height: var(--min-target); padding: 0.25rem 0.5rem; }
+/* Soft pills rather than underlined links: friendlier, still clearly buttons (shape + label, not colour alone). */
+.day-actions .button.quiet {
+  background: var(--accent-soft); border: 2px solid transparent; color: var(--accent);
+  text-decoration: none; padding: 0.25rem 1rem; font-size: 0.9375rem;
+}
+.day-actions .button.quiet:hover { border-color: var(--accent); }
+.day-row.is-social .day-actions .button.quiet { background: var(--surface); }
 .day-actions .button[aria-pressed='true'] { font-weight: 800; text-decoration: none; border-color: var(--accent); }
 .heads-up { border-left: 6px solid var(--accent); }
 .sessions { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
@@ -225,7 +234,6 @@ details summary { cursor: pointer; min-height: var(--min-target); display: flex;
 select { font: inherit; color: var(--fg); background: var(--surface); min-height: var(--min-target); padding: 0.5rem; border: 2px solid var(--border); border-radius: 0.5rem; }
 @media (max-width: 24rem) {
   .day-row { grid-template-columns: 1.5rem 1fr; }
-  .day-actions { grid-column: 2; flex-direction: row; align-items: center; }
 }
 
 .stack-tight > * { margin: 0 0 0.25rem; }
@@ -256,7 +264,7 @@ select { font: inherit; color: var(--fg); background: var(--surface); min-height
 }
 /* The ring takes the card's own text colour: always at least 5.2:1 against the card, whatever its colour. */
 .findme :focus-visible { outline-color: var(--findme-fg, currentColor); }
-.findme-lead { font-size: 1.125rem; margin: 0; }
+.findme-lead { font-size: 1.125rem; margin: 0; padding: 0 3.25rem; } /* clear of the corner close button */
 .findme .shape-graphic { width: min(70vw, 48vh); height: auto; }
 .findme-context { margin: 0; font-size: 1.125rem; font-weight: 600; }
 .findme-word { font-size: clamp(2rem, 10vw, 4rem); margin: 0; letter-spacing: 0.02em; }
@@ -325,3 +333,18 @@ textarea { font: inherit; color: var(--fg); background: var(--surface); padding:
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* Room between your chosen topics, the search box and the suggestions. */
+.stack > .topic-search { margin-top: 1.75rem; }
+.topic-search + * , .topic-search ~ .chips { margin-top: 1.25rem; }
+
+/* iOS draws date inputs at their own intrinsic width, which can push past the screen edge. */
+input[type='date'] { display: block; min-width: 0; max-width: 100%; -webkit-appearance: none; appearance: none; text-align: left; }
+
+/* Two at once: each full title with its own Keep button. */
+.clash-options { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.75rem; }
+.clash-options li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.clash-title { flex: 1 1 12rem; font-weight: 600; }
+
+/* Room between the last energy option and Done. */
+.energy .actions { margin-top: 0.75rem; }

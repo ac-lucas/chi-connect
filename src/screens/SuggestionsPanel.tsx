@@ -124,16 +124,26 @@ export function SuggestionsPanel({ programme, items, connections, level, day, is
       {clash && (
         <div data-row class="card stack heads-up">
           <p>
-            <strong>Two at once:</strong> {clash[0].title} and {clash[1].title} overlap. Keep one, and the other goes to
-            Catch up later{programme.sessions.find((s) => s.id === clash[1].programmeSessionId)?.papers?.length ? ' with its papers' : ''}.
+            <strong>Two at once.</strong> Keep one, and the other goes to Catch up later
+            {programme.sessions.find((s) => s.id === clash[1].programmeSessionId)?.papers?.length ? ' with its papers' : ''}.
           </p>
+          {/* Full titles, each with its own Keep button: titles are long, so they never go inside a button. */}
+          <ul class="clash-options">
+            {([0, 1] as const).map((i) => (
+              <li key={clash[i].id}>
+                <span class="clash-title">{clash[i].title}</span>
+                <button
+                  type="button"
+                  class="button secondary"
+                  aria-label={`Keep ${clash[i].title}`}
+                  onClick={() => void keepingFocus(() => keep(clash[i], clash[1 - i]!))}
+                >
+                  Keep this one
+                </button>
+              </li>
+            ))}
+          </ul>
           <div class="actions">
-            <button type="button" class="button secondary" aria-label={`Keep ${clash[0].title}`} onClick={() => void keepingFocus(() => keep(clash[0], clash[1]))}>
-              Keep {short(clash[0].title)}
-            </button>
-            <button type="button" class="button secondary" aria-label={`Keep ${clash[1].title}`} onClick={() => void keepingFocus(() => keep(clash[1], clash[0]))}>
-              Keep {short(clash[1].title)}
-            </button>
             <button type="button" class="button quiet" onClick={() => void hide(`clash:${clash[0].id}:${clash[1].id}`, 'Keeping both.')}>
               Keep both
             </button>
@@ -222,8 +232,4 @@ export function SuggestionsPanel({ programme, items, connections, level, day, is
       )}
     </section>
   );
-}
-
-function short(t: string) {
-  return t.length > 28 ? `${t.slice(0, 26).trimEnd()}…` : t;
 }

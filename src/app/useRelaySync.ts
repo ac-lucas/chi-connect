@@ -2,7 +2,7 @@
 import { useEffect } from 'preact/hooks';
 import { INTRO_KEEP_MS, syncOnce } from '../relay/protocol';
 import type { Transport } from '../relay/transport';
-import { handleInviteMessage } from '../schedule/invites';
+import { handleInviteMessage, holdsInvites } from '../schedule/invites';
 import { handleSessionsMessage, shareSessionsIfChanged } from '../schedule/overlap';
 import { getHome, getIntros, getSetting, listAllSchedule, listConnections, listInvites, pruneIntros, putConnection, setSetting, updateConnection } from '../storage/db';
 import { announce } from '../ui/announce';
@@ -16,9 +16,9 @@ const SYNC_MORE_MS = 2_000;
 /** Coming back to the app syncs straight away, unless it synced this recently. */
 const SYNC_MIN_GAP_MS = 20_000;
 
-/** True while protected time or a Focus session is running (new invites then wait quietly). */
+/** True during a Recharge block (new invites then wait quietly). */
 async function isHoldingNow(now = Date.now()): Promise<boolean> {
-  return (await listAllSchedule()).some((i) => i.start <= now && i.end > now && (i.type === 'protected' || (i.type === 'session' && !!i.focus)));
+  return (await listAllSchedule()).some((i) => holdsInvites(i, now));
 }
 
 export function useRelaySync(relay: Transport | null, enabled: boolean): void {
@@ -62,7 +62,7 @@ export function useRelaySync(relay: Transport | null, enabled: boolean): void {
         });
         // Send my saved-session list to people I share it with, if it changed (F14).
         await shareSessionsIfChanged(relay);
-        // New invites are announced, except while protected time or a Focus session is running (they wait).
+        // New invites are announced, except during a Recharge block (they wait).
         // One announcement per sync: the live region only reads the last message it's given.
         const lines: string[] = [];
         if (newInvites.length && !(await isHoldingNow())) {

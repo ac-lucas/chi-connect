@@ -13,7 +13,8 @@ export const DEMO_CONNECTIONS: Connection[] = [
     profile: {
       displayName: 'Mina Okafor',
       role: 'PhD student',
-      company: 'Lagos',
+      company: 'Lagos Design Lab',
+      city: 'Lagos',
       tags: tags('Accessibility', 'Haptics', 'VR', 'Design methods'),
     },
     state: 'connected',
@@ -27,7 +28,8 @@ export const DEMO_CONNECTIONS: Connection[] = [
     profile: {
       displayName: 'Tomás Reyes',
       role: 'Interaction designer',
-      company: 'Studio in Valparaíso',
+      company: 'Studio Marea',
+      city: 'Valparaíso',
       tags: tags('Tangible interfaces', 'Fabrication', 'Creativity', 'Sustainability'),
     },
     state: 'connected',
@@ -41,7 +43,8 @@ export const DEMO_CONNECTIONS: Connection[] = [
     profile: {
       displayName: 'Yuki Tanaka (田中 由紀)',
       role: 'UX researcher',
-      company: 'Osaka',
+      company: 'Kansai Lab',
+      city: 'Osaka',
       tags: tags('UX research', 'AI and interaction', 'Eye tracking', 'Visualization', 'Slow tech'),
     },
     state: 'connected',
@@ -53,6 +56,6 @@ export const DEMO_CONNECTIONS: Connection[] = [
 ];
 
 export const DEMO_NOTES: Omit<Note, 'createdAt'>[] = [
-  { id: 'demo-note-mina', connectionId: 'demo-mina', text: 'Building a haptic map for blind travellers. Wants feedback on the study design.', chips: ['Follow up'] },
+  { id: 'demo-note-mina', connectionId: 'demo-mina', text: 'Building a haptic map for blind travellers. Wants feedback on the study design.', chips: ['Same topic'] },
   { id: 'demo-note-tomas', connectionId: 'demo-tomas', text: 'Makes furniture that doubles as an interface. Ask about the clay prototypes.', chips: [] },
 ];

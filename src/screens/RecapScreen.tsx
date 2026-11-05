@@ -190,7 +190,6 @@ export function RecapScreen({ programme, onBack }: { programme: Programme; onBac
           </button>
         </div>
       )}
-      {recap && recap.demoPeople > 0 && <p class="hint">Demo people and simulated meetups count here too, so you can see how it looks.</p>}
     </section>
   );
 }
