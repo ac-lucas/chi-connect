@@ -10,7 +10,7 @@ export function ProgrammeNote({ programme, credit = true }: { programme: Program
     <div class="hint stack-tight">
       {programme.shiftedFrom !== undefined && (
         <p>
-          <span class="badge">Preview</span> Last year’s {programme.name} programme, shown as if it starts{' '}
+          <span class="badge">Preview</span> Last year’s {programme.name} program, shown as if it starts{' '}
           {dayLabel(programme.sessions[0]?.start ?? Date.now(), 'long')}. Times are as published; parallel tracks share a slot.
         </p>
       )}
@@ -18,7 +18,7 @@ export function ProgrammeNote({ programme, credit = true }: { programme: Program
         <p class="credit">
           {programme.credit}{' '}
           <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">
-            Licence
+            License
           <span class="visually-hidden"> (opens in a new tab)</span></a>
         </p>
       )}

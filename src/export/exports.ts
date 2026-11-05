@@ -1,6 +1,6 @@
 // Exports (F09): your own data out of the app, as files you keep. Made on the phone; nothing is uploaded.
 // Every format escapes what it must: names and notes come from other people or free text.
-import type { Connection, FollowUp, Note } from '../model/types';
+import type { CatchUpItem, Connection, FollowUp, Note } from '../model/types';
 
 const real = (cs: Connection[]) => cs.filter((c) => c.state === 'connected');
 
@@ -43,6 +43,17 @@ export function toCsv(connections: Connection[], notes: Note[], followUps: Follo
     lines.push(
       row([p.displayName, p.role, p.company, p.city, (p.links ?? []).join(' '), (p.tags ?? []).map((t) => t.label).join('; '), isoDate(c.connectedAt), n.join(' | '), f.join(' | '), c.demo ? 'yes' : '']),
     );
+  }
+  return `${lines.join('\r\n')}\r\n`;
+}
+
+/** Catch up later as CSV: one row per paper (or one row for a session without papers), with links. */
+export function toCatchUpCsv(items: CatchUpItem[]): string {
+  const lines = [row(['Session', 'Date', 'Why', 'Paper', 'Link'])];
+  for (const c of [...items].sort((a, b) => a.start - b.start)) {
+    const why = c.reason === 'clash' ? 'Clashed with another session' : 'Saved for later';
+    const papers = c.papers?.length ? c.papers : [undefined];
+    for (const p of papers) lines.push(row([c.title, isoDate(c.start), why, p?.title, p?.url]));
   }
   return `${lines.join('\r\n')}\r\n`;
 }

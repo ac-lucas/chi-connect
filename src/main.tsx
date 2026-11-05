@@ -5,6 +5,12 @@ import './styles.css';
 
 // Right after an update, a page still running the old version can ask for a file the new version renamed.
 // Vite reports that as 'vite:preloadError'; reload once to pick up the new version. The flag stops a reload loop.
+// Keyboard or pointer? After tapping Remove, focus moves to the next row's button (so keyboard and screen reader
+// users keep their place), and some browsers then draw a focus ring on it. The ring is for keyboard use: hide it on
+// buttons while the last input was a tap or click, and bring it back with the first key press.
+document.addEventListener('pointerdown', () => (document.documentElement.dataset.input = 'pointer'), { capture: true, passive: true });
+document.addEventListener('keydown', () => (document.documentElement.dataset.input = 'keyboard'), { capture: true });
+
 window.addEventListener('vite:preloadError', (event) => {
   let reloaded = false;
   try {

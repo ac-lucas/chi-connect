@@ -91,7 +91,7 @@ export function MeScreen({ profile, onEdit, onCatchUp, onRecap, programme }: Pro
         <h3 id="me-suggestions">Suggestions</h3>
         <label class="check">
           <input type="checkbox" checked={quiet} onChange={(e) => void toggleQuiet(e.currentTarget.checked)} />
-          <span>Pause suggestions (wildcards and icebreakers). Invites from people still arrive.</span>
+          <span>Pause suggestions (wildcards and conversation starters). Invites from people still arrive.</span>
         </label>
         {snoozed && (
           <p>

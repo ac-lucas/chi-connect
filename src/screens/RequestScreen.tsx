@@ -1,4 +1,5 @@
 import { useRef, useState } from 'preact/hooks';
+import { CloseButton } from '../ui/CloseButton';
 import type { ConnectPayload } from '../connect/payload';
 import { toSharedProfile } from '../model/profile';
 import type { Profile } from '../model/types';
@@ -52,6 +53,7 @@ export function RequestScreen({ profile, theirs, relay, onSent, onCancel }: Prop
 
   return (
     <section class="stack" aria-labelledby="request-heading">
+      <CloseButton onClick={onCancel} />
       <h2 id="request-heading" ref={heading} tabIndex={-1}>
         Connect with {name}?
       </h2>

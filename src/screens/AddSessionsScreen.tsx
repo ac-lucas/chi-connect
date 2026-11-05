@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { CloseButton } from '../ui/CloseButton';
 import { knownTagById } from '../model/tags';
 import type { ScheduleItem } from '../model/types';
 import { dayLabel, MAX_RESULTS, overlaps, programmeDays, searchSessions, timeRange, timeRangeSpoken } from '../programme/programme';
@@ -73,6 +74,7 @@ export function AddSessionsScreen({ programme, initialDay, onDone }: Props) {
 
   return (
     <section class="stack" aria-labelledby="add-heading">
+      <CloseButton onClick={onDone} label="Done adding sessions" />
       <div>
         <h2 id="add-heading" ref={heading} tabIndex={-1}>
           Add sessions

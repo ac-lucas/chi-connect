@@ -16,7 +16,7 @@ export function SpotPicker({ value, onChange }: { value: MeetingSpot | undefined
   return (
     <fieldset class="stack spot-picker">
       <legend>Meeting spot (optional)</legend>
-      <p class="hint">A rough area so you find each other. Never your actual location.</p>
+      <p class="hint">A rough area so you find each other.</p>
       <div class="spot-grid">
         {ROWS.flatMap((row) =>
           SIDES.map((side) => (

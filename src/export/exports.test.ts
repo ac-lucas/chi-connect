@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { toCatchUpCsv } from './exports';
 import type { Connection, FollowUp, Note } from '../model/types';
 import { toCsv, toIcs, toVCard } from './exports';
 
@@ -50,5 +51,20 @@ describe('ICS', () => {
     expect(ics).toContain('DESCRIPTION:Follow-up with Sam Lee');
     for (const line of ics.split('\r\n')) expect(new TextEncoder().encode(line).length).toBeLessThanOrEqual(75);
     expect(ics.startsWith('BEGIN:VCALENDAR')).toBe(true);
+  });
+});
+
+describe('catch-up export', () => {
+  it('lists each paper with its link, escapes cells and neutralises formulas', () => {
+    const csv = toCatchUpCsv([
+      { programmeSessionId: 's1', title: 'Haptics, "and" more', start: new Date(2027, 3, 13, 9).getTime(), reason: 'clash', addedAt: 0, papers: [{ title: '=cmd', url: 'https://doi.org/10.1/x' }, { title: 'B', url: 'https://doi.org/10.1/y' }] },
+      { programmeSessionId: 's2', title: 'No papers', start: new Date(2027, 3, 12, 9).getTime(), reason: 'saved', addedAt: 0 },
+    ]);
+    const lines = csv.trim().split('\r\n');
+    expect(lines[0]).toBe('"Session","Date","Why","Paper","Link"');
+    expect(lines[1]).toBe('"No papers","2027-04-12","Saved for later","",""');
+    expect(lines[2]).toContain('"Haptics, ""and"" more"');
+    expect(lines[2]).toContain(`"'=cmd","https://doi.org/10.1/x"`);
+    expect(lines).toHaveLength(4);
   });
 });

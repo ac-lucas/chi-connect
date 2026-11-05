@@ -5,7 +5,7 @@ import { randomId } from '../model/ids';
 import type { Connection, EnergyLevel, ScheduleItem } from '../model/types';
 import { atMinutes, dayKey, nextDay, timeRange, timeRangeSpoken, clockTime } from '../programme/programme';
 import type { Programme } from '../programme/types';
-import type { Busy } from '../schedule/breaks';
+import type { Busy, PlannedBreak } from '../schedule/breaks';
 import { alsoGoing, namesList } from '../schedule/overlap';
 import { findClashes, freeGaps, inSomething, pickWildcard, recentlyEnded, topicLine } from '../schedule/suggest';
 import { deleteScheduleItem, dismiss, getSetting, putCatchUp, putScheduleItem, setSetting } from '../storage/db';
@@ -19,6 +19,8 @@ interface Props {
   items: ScheduleItem[];
   connections: Connection[];
   level: EnergyLevel;
+  /** The day's planned lunch and breathers: lunch counts as busy when looking for a free stretch. */
+  breaks: PlannedBreak[];
   /** Midnight of the day being shown. */
   day: number;
   isToday: boolean;
@@ -37,7 +39,7 @@ const clock = clockTime;
  * and a wildcard session (F15) when energy is Charged. Quiet mode, snooze and the daily cap (F18) apply to everything
  * except clashes, which are about your own plan. Nothing shows during a session or protected time.
  */
-export function SuggestionsPanel({ programme, items, connections, level, day, isToday, now, myTopics, onInvite }: Props) {
+export function SuggestionsPanel({ programme, items, connections, level, breaks, day, isToday, now, myTopics, onInvite }: Props) {
   const settings = useLive(
     async () => ({ dismissed: (await getSetting('dismissed')) ?? [], quiet: !!(await getSetting('quietMode')), snoozeUntil: (await getSetting('snoozeUntil')) ?? 0 }),
     ['settings'],
@@ -79,16 +81,18 @@ export function SuggestionsPanel({ programme, items, connections, level, day, is
     if ((showTalk || showNudge) && seenKey && !dismissed.includes(seenKey)) void dismiss(seenKey); // counts towards the daily cap
   }, [showTalk, showNudge, seenKey]);
 
-  // F15: wildcard, one a day, when Charged and there's a free gap.
+  // F15: wildcard, one a day, when Charged and there's a free gap. Energy is today's, so only on today.
   const wildKey = `wildcard:${dayKey(day)}`;
   let wildcard: ReturnType<typeof pickWildcard> = null;
+  let lastEnd = 0;
   // Snooze and "not during a session" apply here too (NUD-2), not just quiet mode.
-  if (level === 'charged' && !quietNow && !dismissed.includes(wildKey) && !daySaved.some((s) => s.fromWildcard)) {
+  if (isToday && level === 'charged' && !quietNow && !dismissed.includes(wildKey) && !daySaved.some((s) => s.fromWildcard)) {
     const busy: Busy[] = items
       .filter((i) => i.start >= day && i.start < nextDay(day) && i.type !== 'catch-up')
       .map((i) => ({ id: i.id, start: i.start, end: i.end, kind: i.type === 'session' ? 'session' : i.type === 'protected' ? 'protected' : 'meetup' }));
-    const from = isToday ? Math.max(now, atMinutes(day, 8 * 60)) : atMinutes(day, 8 * 60);
-    const lastEnd = Math.max(atMinutes(day, 18 * 60), ...busy.map((b) => b.end));
+    for (const b of breaks) if (b.kind === 'meal') busy.push({ id: b.key, start: b.start, end: b.end, kind: 'meetup' });
+    const from = Math.max(now, atMinutes(day, 8 * 60));
+    lastEnd = Math.max(atMinutes(day, 18 * 60), ...busy.map((b) => b.end));
     const gaps = freeGaps([...busy, { id: 'end', start: lastEnd, end: lastEnd + MIN, kind: 'session' }], from, 30);
     wildcard = pickWildcard(programme, gaps, myTopics, new Set(saved.map((s) => s.programmeSessionId ?? '')));
   }
@@ -193,9 +197,19 @@ export function SuggestionsPanel({ programme, items, connections, level, day, is
       {wildcard && (
         <div data-row class="card stack suggestion wildcard">
           <p>
-            <strong>Wildcard.</strong> You’re Charged and have a free stretch {wildcard.gap.start <= now + MIN ? 'right now' : `from ${clock(wildcard.gap.start)}`}.
-            {' '}<strong>{wildcard.session.title}</strong>
-            {wildcard.near ? `, next door to your interest in ${wildcard.near}` : ''}. Fancy a detour?
+            <strong>Wildcard.</strong> You’re Charged and free{' '}
+            {wildcard.gap.start <= now + MIN ? 'now' : `from ${clock(wildcard.gap.start)}`}
+            {wildcard.gap.end < lastEnd ? ` until ${clock(wildcard.gap.end)}` : ' for the rest of the day'}.{' '}
+            {wildcard.near ? (
+              <>
+                <strong>{wildcard.session.title}</strong> is next door to your interest in {wildcard.near}.
+              </>
+            ) : (
+              <>
+                Here’s something a bit different: <strong>{wildcard.session.title}</strong>.
+              </>
+            )}{' '}
+            Fancy a detour?
           </p>
           <p class="muted">
             <span aria-hidden="true">{timeRange(wildcard.session.start, wildcard.session.end)}</span>

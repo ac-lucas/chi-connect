@@ -1,5 +1,6 @@
 // Meetup invites (F12): lunch, a break together, or side by side at a session. Only between connected pairs.
 // Quiet by default: saying no sends nothing, and the sender only ever learns who said yes.
+import { DEMO_NEVER_ANSWERS } from '../data/demo';
 import { randomId } from '../model/ids';
 import type { Connection, Invite, InviteKind, MeetingSpot, ScheduleItem } from '../model/types';
 import type { WireInvite } from '../relay/invites';
@@ -112,7 +113,13 @@ export async function deliverInvite(
   const failed: Connection[] = [];
   for (const r of recipients) {
     if (r.demo) {
-      // Simulated: demo people "say yes" after a short pause. Labelled as simulated in the UI.
+      // Simulated: demo people "say yes" after a short pause, except one who never answers (what a decline looks
+      // like to the sender). Labelled as simulated in the UI.
+      if (r.id === DEMO_NEVER_ANSWERS) {
+        const inv = await getInvite(invite.id);
+        if (inv && !inv.simulated) await putInvite({ ...inv, simulated: true });
+        continue;
+      }
       setTimeout(() => void simulatedYes(invite.id, r).then(() => onSimulatedYes(r)), 2500 + Math.random() * 2000);
       continue;
     }

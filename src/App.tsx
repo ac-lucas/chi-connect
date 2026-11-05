@@ -78,7 +78,11 @@ export function App() {
   // undefined = still loading, null = first run
   const [profile, setProfile] = useState<Profile | null | undefined>(undefined);
   const [tab, setTab] = useState<Tab>('today');
-  const [screen, setScreen] = useState<Screen>({ kind: 'tabs' });
+  const [screen, setScreenState] = useState<Screen>({ kind: 'tabs' });
+  // The day shown on Today, kept here so coming back from another screen (an invite, adding sessions) lands on it.
+  const [todayDay, setTodayDay] = useState<number | null>(null);
+  // Something just added (an invite you sent): Today points it out once.
+  const [highlight, setHighlight] = useState<string | null>(null);
   const [pendingCode, setPendingCode] = useState<string | undefined>(takeCodeFromLink);
   const [loadError, setLoadError] = useState(false);
   const { programme, failed: programmeFailed } = useProgramme();
@@ -116,6 +120,29 @@ export function App() {
       setPendingCode(undefined);
     }
   }, [profile, pendingCode]);
+
+  // Browser and phone Back close the open screen instead of leaving the app. Each screen opened from the tabs adds
+  // one history entry; moving from one screen to another replaces it, so Back always returns to the tabs. Only
+  // in-app state is used (no URL changes, no server routing).
+  function setScreen(s: Screen) {
+    const depth: number = history.state?.pebbleDepth ?? 0;
+    if (s.kind === 'tabs') {
+      if (depth > 0) history.go(-depth); // the popstate that follows sets the tabs too
+      setScreenState(s);
+      return;
+    }
+    if (depth > 0) history.replaceState({ pebbleDepth: depth, pebble: s }, '');
+    else history.pushState({ pebbleDepth: 1, pebble: s }, '');
+    setScreenState(s);
+  }
+  useEffect(() => {
+    const onPop = (e: PopStateEvent) => {
+      const s = (e.state?.pebble as Screen | undefined) ?? { kind: 'tabs' };
+      setScreenState(s);
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
 
   async function handleCreate(d: ProfileDraft) {
     const p = createProfile(d);
@@ -211,7 +238,18 @@ export function App() {
   } else if (screen.kind === 'recap' && programme) {
     body = <RecapScreen programme={programme} onBack={() => goTab('me')} />;
   } else if (screen.kind === 'invite') {
-    body = <InviteScreen me={profile.displayName} draft={screen.draft} relay={relay} onSent={() => goTab('today')} onCancel={() => goTab('today')} />;
+    body = (
+      <InviteScreen
+        me={profile.displayName}
+        draft={screen.draft}
+        relay={relay}
+        onSent={(id) => {
+          setHighlight(id);
+          goTab('today');
+        }}
+        onCancel={() => goTab('today')}
+      />
+    );
   } else if (screen.kind === 'sessions' && programme) {
     body = <AddSessionsScreen programme={programme} initialDay={screen.day} onDone={() => goTab('today')} />;
   } else if (tab === 'today') {
@@ -221,17 +259,22 @@ export function App() {
         programme={programme}
         relay={relay}
         myTopics={profile.tags.map((t) => t.key)}
+        day={todayDay}
+        onDayChange={setTodayDay}
+        highlight={highlight}
+        onHighlightShown={() => setHighlight(null)}
+        onRecap={() => setScreen({ kind: 'recap' })}
         onAddSessions={(day) => setScreen({ kind: 'sessions', day })}
         onInvite={(draft) => setScreen({ kind: 'invite', draft })}
       />
     ) : (
       programmeFailed ? (
         <div class="card stack" role="status">
-          <p class="lede">The programme hasn’t loaded yet.</p>
+          <p class="lede">The program hasn’t loaded yet.</p>
           <p>Pebble needs a connection the first time, to download it. It’ll try again when you come back to the app.</p>
         </div>
       ) : (
-        <p class="muted">Loading the programme…</p>
+        <p class="muted">Loading the program…</p>
       )
     );
   } else if (tab === 'people') {

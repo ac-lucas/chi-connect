@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { talkOpeners, pickLine } from '../data/icebreakers';
+import { openerFor, personOpeners, talkOpeners, pickLine } from '../data/icebreakers';
 import type { ScheduleItem } from '../model/types';
 import type { Programme, ProgrammeSession } from '../programme/types';
 import { findClashes, freeGaps, inSomething, pickWildcard, recentlyEnded, topicLine } from './suggest';
@@ -48,6 +48,17 @@ describe('clashes, recently ended, in something', () => {
     const c = findClashes([item('a', at(9), at(10)), item('b', at(9, 30), at(10, 30)), item('c', at(11), at(12))]);
     expect(c.map(([x, y]) => `${x.id}+${y.id}`)).toEqual(['a+b']);
   });
+  it('keeps finding clashes when several sessions share a slot, until one is left', () => {
+    let saved = ['a', 'b', 'c', 'd'].map((id) => item(id, at(13, 15), at(14, 45)));
+    // Keep the first of each clash shown, as someone tapping "Keep this one" would: every pair gets asked about.
+    for (let i = 0; i < 3; i++) {
+      const [keep, drop] = findClashes(saved)[0]!;
+      expect(keep.id).toBe('a');
+      saved = saved.filter((x) => x.id !== drop.id);
+    }
+    expect(findClashes(saved)).toEqual([]);
+    expect(saved.map((x) => x.id)).toEqual(['a']);
+  });
   it('finds the session that just ended', () => {
     const saved = [item('a', at(9), at(10)), item('b', at(10), at(11))];
     expect(recentlyEnded(saved, at(11, 10))?.id).toBe('b');
@@ -62,7 +73,7 @@ describe('clashes, recently ended, in something', () => {
 
 describe('lines', () => {
   it('only states real counts from the programme', () => {
-    expect(topicLine(programme, { topics: ['vr'] })).toBe('Virtual reality comes up in 3 sessions in this programme.');
+    expect(topicLine(programme, { topics: ['vr'] })).toBe('Virtual reality comes up in 3 sessions in this program.');
     expect(topicLine(programme, { topics: ['robots'] })).toBeNull(); // only once: not worth saying
     expect(topicLine(programme, { topics: [] })).toBeNull();
   });
@@ -71,5 +82,21 @@ describe('lines', () => {
     expect(o[0]).toBe('What did you make of “Haptics + XR”?');
     expect(o).toHaveLength(3);
     expect(pickLine('lunch', 'k1')).toBe(pickLine('lunch', 'k1'));
+  });
+});
+
+describe('conversation starters', () => {
+  it('builds person lines from shared topics, their topics and shared sessions, at most three', () => {
+    const lines = personOpeners({ shared: ['Haptics'], theirs: ['Haptics', 'VR'], bothSessions: ['Touch and Feel'], key: 'x' });
+    expect(lines).toEqual([
+      'You’re both into Haptics. What got you into it?',
+      'What are you working on in VR at the moment?',
+      'You’re both going to “Touch and Feel”. Compare notes after?',
+    ]);
+    expect(personOpeners({ shared: [], theirs: [], bothSessions: [], key: 'x' })).toHaveLength(1);
+  });
+  it('picks a steady line per meetup kind', () => {
+    expect(openerFor('meal', 'a')).toBe(openerFor('meal', 'a'));
+    expect(openerFor('sit-together', 'a')).toBeTruthy();
   });
 });

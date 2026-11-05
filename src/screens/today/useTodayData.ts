@@ -14,9 +14,11 @@ export interface TodayData {
   connections: Connection[];
   /** Meetups whose "display your shape" prompt was hidden. */
   hiddenPrompts: string[];
+  /** Suggestions paused (no conversation starters either). */
+  quiet: boolean;
 }
 
-const EMPTY: TodayData = { items: [], skipped: [], invites: [], incoming: [], connections: [], hiddenPrompts: [] };
+const EMPTY: TodayData = { items: [], skipped: [], invites: [], incoming: [], connections: [], hiddenPrompts: [], quiet: false };
 
 /**
  * `clockBucket` changes every few minutes so time-based tidying runs (unanswered invites go once their time
@@ -27,13 +29,14 @@ export function useTodayData(clockBucket: number): TodayData {
     useLive(
       async () => {
         const incoming = await pendingIncoming(); // tidies invites first; it can delete some
-        const [items, energy, skipped, invites, connections, dismissed] = await Promise.all([
+        const [items, energy, skipped, invites, connections, dismissed, quiet] = await Promise.all([
           listAllSchedule(),
           getSetting('energy'),
           getSetting('skippedBreaks'),
           listInvites(),
           listConnections(),
           getSetting('dismissed'),
+          getSetting('quietMode'),
         ]);
         return {
           items,
@@ -43,6 +46,7 @@ export function useTodayData(clockBucket: number): TodayData {
           incoming,
           connections,
           hiddenPrompts: (dismissed ?? []).filter((k) => k.startsWith('shapeprompt:')),
+          quiet: !!quiet,
         };
       },
       ['schedule', 'settings', 'invites', 'connections'],

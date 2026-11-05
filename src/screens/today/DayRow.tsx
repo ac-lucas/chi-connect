@@ -10,7 +10,8 @@ import { deleteScheduleItem, skipBreak } from '../../storage/db';
 import { announce } from '../../ui/announce';
 import { keepingFocus } from '../../ui/focus';
 import { ShapeBadge } from '../ShapeCard';
-import { isOnMeetup, meetupContext, PROTECT_LABELS, rowClass, rowEnd, rowGlyph, rowKindLabel, rowStart, rowTitle, type InviteRow, type Row } from './rows';
+import { openerFor } from '../../data/icebreakers';
+import { isOnMeetup, meetupContext, meetupOf, PROTECT_LABELS, rowClass, rowEnd, rowGlyph, rowKindLabel, rowStart, rowTitle, type InviteRow, type Row } from './rows';
 
 interface Props {
   r: Row;
@@ -21,6 +22,12 @@ interface Props {
   onInviteFromSession: (s: ScheduleItem, preselect?: string[]) => void;
   onInviteFromBreak: (b: PlannedBreak) => void;
   onShowShape: (inviteId: string, context: string) => void;
+  /** Just added (an invite you sent): marked for a moment. */
+  highlighted?: boolean;
+  /** For protected time: a saved session it overlaps. */
+  clashWith?: string;
+  /** Suggestions paused: no conversation starters. */
+  quiet?: boolean;
 }
 
 /** Offer Invite only while there's enough of it left to meet (an invite starts at least 2 minutes out). */
@@ -62,10 +69,35 @@ async function leaveOrCancel(r: InviteRow, relay: Transport | null) {
   }
 }
 
-export function DayRow({ r, now, connections, nameOf, relay, onInviteFromSession, onInviteFromBreak, onShowShape }: Props) {
+export function DayRow({ r, now, connections, nameOf, relay, onInviteFromSession, onInviteFromBreak, onShowShape, highlighted, clashWith, quiet }: Props) {
   const going = r.kind === 'session' ? alsoGoing(r.item.programmeSessionId, connections) : [];
+  const past = rowEnd(r) <= now;
+  const canInvite = rowEnd(r) > now + MIN_INVITE_MS;
+  const m = meetupOf(r);
+  const inv = m?.invite;
+  const merged = r.kind === 'session' && !!m;
+  const meetupMeta = m
+      ? [
+          merged && inv
+            ? inv.outgoing
+              ? inv.acceptedIds.length
+                ? `Sitting together with ${namesList(connections.filter((c) => inv.acceptedIds.includes(c.id)))}`
+                : 'Sitting together'
+              : `Sitting together with ${inv.senderName}`
+            : m.item.place,
+          inv?.outgoing
+            ? inv.acceptedIds.length === 0
+              ? `Invited ${inv.recipientIds.length}, no answers yet`
+              : `${inv.acceptedIds.length} of ${inv.recipientIds.length} said yes`
+            : undefined,
+        ]
+          .filter(Boolean)
+          .join(' · ')
+      : '';
+  // Something to ask about a session that just finished (not on meetups).
+  const opener = !quiet && r.kind === 'session' && past && now - r.item.end < 3 * 60 * 60_000 ? openerFor('after-session', r.item.id) : null;
   return (
-    <li class={`day-row ${rowClass(r)}`}>
+    <li class={`day-row ${rowClass(r)}${merged ? ' is-social' : ''}${past ? ' is-past' : ''}${highlighted ? ' just-added' : ''}`}>
       <span class="day-glyph" aria-hidden="true">
         {rowGlyph(r)}
       </span>
@@ -73,26 +105,36 @@ export function DayRow({ r, now, connections, nameOf, relay, onInviteFromSession
         <p class="day-time">
           <span aria-hidden="true">{timeRange(rowStart(r), rowEnd(r))}</span>
           <span class="visually-hidden">{timeRangeSpoken(rowStart(r), rowEnd(r))}</span>
-          <span class="day-kind"> · {rowKindLabel(r)}</span>
+          {r.kind !== 'invite' && <span class="day-kind"> · {rowKindLabel(r)}</span>}
+          {past && <span class="day-kind"> · Ended</span>}
+          {highlighted && <span class="day-kind"> · Just added</span>}
         </p>
         <p class="day-title">
           {r.kind === 'invite' && r.invite ? inviteTitle(r.invite, r.invite.acceptedIds.map(nameOf)) : rowTitle(r)}
           {r.kind === 'invite' && r.invite?.simulated && badge('Simulated')}
           {r.kind === 'session' && r.item.starter && badge('Sample')}
         </p>
-        {r.kind === 'invite' && r.invite?.outgoing && (
-          <p class="muted">
-            {r.invite.acceptedIds.length === 0 ? `Invited ${r.invite.recipientIds.length}. Nobody yet, and that’s fine.` : `${r.invite.acceptedIds.length} said yes.`}
-          </p>
-        )}
-        {r.kind === 'invite' && r.item.place && <p class="muted">{r.item.place}</p>}
-        {r.kind === 'invite' && isOnMeetup(r) && (
-          <p class="shape-line">
-            Find each other by <ShapeBadge seedKey={r.invite!.id} />
-          </p>
-        )}
         {r.kind === 'session' && r.item.place && <p class="muted">{r.item.place}</p>}
-        {going.length > 0 && r.kind === 'session' && (
+        {meetupMeta && (
+          <p class={merged ? 'also-going' : 'muted'}>
+            {merged && <span aria-hidden="true">◆ </span>}
+            {meetupMeta}
+            {merged && inv?.simulated && badge('Simulated')}
+          </p>
+        )}
+        {m && isOnMeetup(m) && (
+          <p class="shape-line">
+            Find each other by <ShapeBadge seedKey={inv!.id} />
+          </p>
+        )}
+        {opener && (
+          <p class="opener">
+            <span aria-hidden="true">💬 </span>
+            <span class="visually-hidden">Something to say: </span>
+            {opener}
+          </p>
+        )}
+        {going.length > 0 && r.kind === 'session' && !merged && (
           <p class="also-going">
             <span aria-hidden="true">◆ </span>
             Also going: {namesList(going)}.{' '}
@@ -104,15 +146,21 @@ export function DayRow({ r, now, connections, nameOf, relay, onInviteFromSession
           </p>
         )}
         {r.kind === 'protected' && <p class="hint">{PROTECT_LABELS[r.item.protectedKind as 'recharge' | 'off']?.line}</p>}
+        {r.kind === 'protected' && clashWith && <p class="hint">Heads-up: this is during {clashWith}.</p>}
       </div>
       <div class="day-actions">
         {r.kind === 'session' && (
           <>
-            {r.item.end > now + MIN_INVITE_MS && (
-              <button type="button" class="button quiet" aria-label={`Invite someone to ${r.item.title}`} onClick={() => onInviteFromSession(r.item)}>
-                Invite
-              </button>
-            )}
+            {/* Stays in place once it's too late, just switched off, so the row doesn't change shape. */}
+            <button
+              type="button"
+              class="button quiet"
+              disabled={!canInvite}
+              aria-label={canInvite ? `Invite someone to ${r.item.title}` : `Invite someone to ${r.item.title} (too late now)`}
+              onClick={() => onInviteFromSession(r.item)}
+            >
+              Invite
+            </button>
             <button type="button" class="button quiet" aria-label={`Remove ${r.item.title}`} onClick={() => void keepingFocus(() => removeItem(r.item))}>
               Remove
             </button>
@@ -125,17 +173,23 @@ export function DayRow({ r, now, connections, nameOf, relay, onInviteFromSession
         )}
         {r.kind === 'break' && (
           <>
-            {r.brk.end > now + MIN_INVITE_MS && (
-              <button type="button" class="button quiet" aria-label={`Invite someone to your ${r.brk.kind === 'meal' ? 'lunch' : 'breather'} at ${clock(r.brk.start)}`} onClick={() => onInviteFromBreak(r.brk)}>
-                Invite
+            <button
+              type="button"
+              class="button quiet"
+              disabled={!canInvite}
+              aria-label={`Invite someone to your ${r.brk.kind === 'meal' ? 'lunch' : 'breather'} at ${clock(r.brk.start)}${canInvite ? '' : ' (too late now)'}`}
+              onClick={() => onInviteFromBreak(r.brk)}
+            >
+              Invite
+            </button>
+            {!past && (
+              <button type="button" class="button quiet" aria-label={`Skip ${r.brk.kind === 'meal' ? 'lunch' : 'breather'} at ${clock(r.brk.start)}`} onClick={() => void keepingFocus(() => skip(r.brk))}>
+                Skip
               </button>
             )}
-            <button type="button" class="button quiet" aria-label={`Skip ${r.brk.kind === 'meal' ? 'lunch' : 'breather'} at ${clock(r.brk.start)}`} onClick={() => void keepingFocus(() => skip(r.brk))}>
-              Skip
-            </button>
           </>
         )}
-        {r.kind === 'invite' && <MeetupActions r={r} relay={relay} onShowShape={onShowShape} />}
+        {m && <MeetupActions r={m} relay={relay} onShowShape={onShowShape} />}
       </div>
     </li>
   );

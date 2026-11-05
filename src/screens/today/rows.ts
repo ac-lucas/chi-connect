@@ -5,7 +5,8 @@ import { KIND_INFO } from '../../schedule/invites';
 import { describeSpot } from '../../schedule/spot';
 
 export type Row =
-  | { kind: 'session'; item: ScheduleItem }
+  /** `meetup`: sitting together at this very session, shown in the same block rather than as a second row. */
+  | { kind: 'session'; item: ScheduleItem; meetup?: { item: ScheduleItem; invite: Invite } }
   | { kind: 'protected'; item: ScheduleItem }
   | { kind: 'break'; brk: PlannedBreak }
   | { kind: 'invite'; item: ScheduleItem; invite?: Invite };
@@ -20,10 +21,23 @@ export const PROTECT_LABELS: Record<Exclude<ProtectedKind, 'focus'>, { label: st
 /** Put the day's items and planned breaks in time order. */
 export function buildRows(dayItems: ScheduleItem[], breaks: PlannedBreak[], invitesById: Map<string, Invite>): Row[] {
   const rows: Row[] = [];
+  const sessionRows = new Map<string, Extract<Row, { kind: 'session' }>>();
   for (const item of dayItems) {
-    if (item.type === 'session') rows.push({ kind: 'session', item });
-    else if (item.type === 'protected') rows.push({ kind: 'protected', item });
-    else if (item.type === 'invite') rows.push({ kind: 'invite', item, invite: item.inviteId ? invitesById.get(item.inviteId) : undefined });
+    if (item.type !== 'session') continue;
+    const row = { kind: 'session' as const, item };
+    rows.push(row);
+    if (item.programmeSessionId && !sessionRows.has(item.programmeSessionId)) sessionRows.set(item.programmeSessionId, row);
+  }
+  for (const item of dayItems) {
+    if (item.type === 'protected') rows.push({ kind: 'protected', item });
+    else if (item.type === 'invite') {
+      const invite = item.inviteId ? invitesById.get(item.inviteId) : undefined;
+      // Sitting together at a session you saved: one block. Anything else (lunch, a break, arriving or walking
+      // over together beforehand, sitting together at a session you haven't saved) keeps its own row.
+      const host = invite?.kind === 'sit-together' && item.programmeSessionId ? sessionRows.get(item.programmeSessionId) : undefined;
+      if (host && invite && !host.meetup) host.meetup = { item, invite };
+      else rows.push({ kind: 'invite', item, invite });
+    }
   }
   for (const brk of breaks) rows.push({ kind: 'break', brk });
   return rows.sort((a, b) => rowStart(a) - rowStart(b));
@@ -54,6 +68,13 @@ export function rowTitle(r: Row): string {
 
 export function rowClass(r: Row): string {
   return r.kind === 'session' ? 'is-session' : r.kind === 'protected' ? 'is-protected' : r.kind === 'invite' ? 'is-social' : 'is-break';
+}
+
+/** The meetup in a row: an invite row, or a session with a sit-together merged into it. */
+export function meetupOf(r: Row): InviteRow | undefined {
+  if (r.kind === 'invite') return r;
+  if (r.kind === 'session' && r.meetup) return { kind: 'invite', item: r.meetup.item, invite: r.meetup.invite };
+  return undefined;
 }
 
 /** A meetup you're part of (you said yes, or you sent it and someone did): it has a shape to find each other by. */

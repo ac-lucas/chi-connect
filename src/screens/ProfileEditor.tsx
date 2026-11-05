@@ -1,4 +1,5 @@
 import { useRef, useState } from 'preact/hooks';
+import { CloseButton } from '../ui/CloseButton';
 import { checkDraft, toSharedProfile, type DraftErrors, type DraftField, type ProfileDraft } from '../model/profile';
 import { LIMITS } from '../model/text';
 import type { ShareChoices } from '../model/types';
@@ -16,7 +17,7 @@ interface Props {
 
 const SHARE_LABELS: Record<keyof ShareChoices, string> = {
   role: 'What you do',
-  company: 'Company or organisation',
+  company: 'Company or organization',
   city: 'City',
   links: 'Links',
   tags: 'Topics',
@@ -66,6 +67,7 @@ export function ProfileEditor({ initial, mode, onSave, onCancel }: Props) {
 
   return (
     <form ref={form} class="stack" onSubmit={submit} noValidate>
+      {onCancel && <CloseButton onClick={onCancel} label="Close without saving" />}
       <div>
         <h2 ref={heading} tabIndex={-1}>
           {mode === 'create' ? 'Hi. Let’s set you up.' : 'Edit your profile'}
@@ -110,7 +112,7 @@ export function ProfileEditor({ initial, mode, onSave, onCancel }: Props) {
       </div>
 
       <div class="field">
-        <label for="company">Company or organisation (optional)</label>
+        <label for="company">Company or organization (optional)</label>
         <span class="hint" id="company-hint">
           For example: a university, lab or studio.
         </span>

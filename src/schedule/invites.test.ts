@@ -150,7 +150,7 @@ describe('find-me card and spots', () => {
   });
   it('describes spots in plain words', () => {
     expect(describeSpot({ row: 'back', side: 'left', aisleSeat: true })).toBe('Back left, aisle seat');
-    expect(describeSpot({ row: 'middle', side: 'centre' })).toBe('Middle centre');
+    expect(describeSpot({ row: 'middle', side: 'centre' })).toBe('Middle center');
     expect(describeSpot({ byDoor: true })).toBe('By the door');
     expect(describeSpot(undefined)).toBe('');
   });

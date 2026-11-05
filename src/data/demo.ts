@@ -55,7 +55,13 @@ export const DEMO_CONNECTIONS: Connection[] = [
   },
 ];
 
+/**
+ * The demo person who never answers invites, so a tester sees what a "no" looks like from the sender's side:
+ * nothing at all (declining tells no one). Labelled Simulated like every other demo reply.
+ */
+export const DEMO_NEVER_ANSWERS = 'demo-yuki';
+
 export const DEMO_NOTES: Omit<Note, 'createdAt'>[] = [
-  { id: 'demo-note-mina', connectionId: 'demo-mina', text: 'Building a haptic map for blind travellers. Wants feedback on the study design.', chips: ['Same topic'] },
+  { id: 'demo-note-mina', connectionId: 'demo-mina', text: 'Building a haptic map for blind travelers. Wants feedback on the study design.', chips: ['Same topic'] },
   { id: 'demo-note-tomas', connectionId: 'demo-tomas', text: 'Makes furniture that doubles as an interface. Ask about the clay prototypes.', chips: [] },
 ];

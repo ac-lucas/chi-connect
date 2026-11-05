@@ -1,4 +1,5 @@
 import { lazy, Suspense } from 'preact/compat';
+import { CloseButton } from '../ui/CloseButton';
 import { useRef, useState } from 'preact/hooks';
 import { decodeCode, DecodeError, type ConnectPayload } from '../connect/payload';
 import { redeemSixDigitCode } from '../relay/protocol';
@@ -78,6 +79,7 @@ export function EnterCodeScreen({ relay, onFound, onCancel }: Props) {
 
   return (
     <form class="stack" onSubmit={submit} noValidate aria-labelledby="enter-heading">
+      <CloseButton onClick={onCancel} />
       <div>
         <h2 id="enter-heading" ref={heading} tabIndex={-1}>
           Enter a code

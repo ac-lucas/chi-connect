@@ -15,7 +15,7 @@ export const ICEBREAKERS: Record<Situation, readonly string[]> = {
     'What’s been the best session so far for you?',
     'Is this your first time here, or a regular?',
     'What are you working on at the moment?',
-    'Anything on the programme you’re saving for later?',
+    'Anything on the program you’re saving for later?',
     'Found any good quiet spots yet?',
   ],
   hallway: [
@@ -50,9 +50,37 @@ export function talkOpeners(title: string, topic: string | null): string[] {
   return lines;
 }
 
+/** A conversation starter for a meetup kind (or just after a session), picked steadily for `key`. */
+export function openerFor(kind: string, key: string): string {
+  const situation: Situation =
+    kind === 'meal' || kind === 'break-together'
+      ? 'lunch'
+      : kind === 'sit-together'
+        ? 'side-by-side'
+        : kind === 'arrive-together' || kind === 'walk-over'
+          ? 'hallway'
+          : 'after-talk'; // 'catch-up' and 'after-session'
+  return pickLine(situation, key);
+}
+
 /** One line for a situation, picked steadily for a given key so it doesn't change on every render. */
 export function pickLine(situation: Situation, key: string): string {
   const list = ICEBREAKERS[situation];
   const h = [...key].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 11);
   return list[h % list.length]!;
+}
+
+/**
+ * Things to talk about with one person (shown on their page). Built only from what they chose to share and your
+ * own plans: a topic you share, one of theirs, a session you're both going to, then a general line. At most three.
+ */
+export function personOpeners(o: { shared: string[]; theirs: string[]; bothSessions: string[]; key: string }): string[] {
+  const out: string[] = [];
+  const short = (t: string) => (t.length > 50 ? `${t.slice(0, 47).trimEnd()}…` : t);
+  if (o.shared[0]) out.push(`You’re both into ${o.shared[0]}. What got you into it?`);
+  const other = o.theirs.find((t) => !o.shared.includes(t));
+  if (other) out.push(`What are you working on in ${other} at the moment?`);
+  if (o.bothSessions[0]) out.push(`You’re both going to “${short(o.bothSessions[0])}”. Compare notes after?`);
+  out.push(pickLine('lunch', o.key));
+  return out.slice(0, 3);
 }

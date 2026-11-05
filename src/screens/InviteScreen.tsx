@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'preact/hooks';
-import { PLACES, PLACE_TYPE_LABELS } from '../data/places';
+import { CloseButton } from '../ui/CloseButton';
+import { PLACES } from '../data/places';
 import { LIMITS_INVITE } from '../relay/invites';
 import { cleanText } from '../model/text';
 import type { Connection, Invite, InviteKind, MeetingSpot } from '../model/types';
@@ -29,7 +30,8 @@ interface Props {
   me: string;
   draft: InviteDraft;
   relay: Transport | null;
-  onSent: () => void;
+  /** After sending: the invite's ID, so the day can point it out. */
+  onSent: (inviteId: string) => void;
   onCancel: () => void;
 }
 
@@ -109,8 +111,8 @@ export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
         (who) => announce(`${who.profile.displayName} said yes (simulated).`),
       );
       if (result.failed.length) return partly(result);
-      announce(`Invite sent to ${recipients.length === 1 ? recipients[0]!.profile.displayName : `${recipients.length} people`}.`);
-      onSent();
+      announce(`Invite sent to ${recipients.length === 1 ? recipients[0]!.profile.displayName : `${recipients.length} people`}. It’s in your day.`);
+      onSent(result.invite.id);
     } catch {
       setProblem('That didn’t save. Try again in a moment.');
     } finally {
@@ -130,7 +132,7 @@ export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
       const failed = await deliverInvite(relay, made.invite, made.failed, (who) => announce(`${who.profile.displayName} said yes (simulated).`));
       if (failed.length) return partly({ invite: made.invite, failed });
       announce('Sent to everyone now.');
-      onSent();
+      onSent(made.invite.id);
     } finally {
       setSending(false);
     }
@@ -138,6 +140,7 @@ export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
 
   return (
     <form class="stack" onSubmit={send} aria-labelledby="invite-heading" noValidate>
+      <CloseButton onClick={onCancel} label="Close without sending" />
       <div>
         <h2 id="invite-heading" ref={heading} tabIndex={-1}>
           Invite someone
@@ -170,7 +173,7 @@ export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
           <p class="muted">Nobody to invite yet. Connect with someone first.</p>
         ) : (
           <>
-            <div class="actions">
+            <div class="actions select-all">
               <button type="button" class="button quiet" onClick={() => setChosen(chosen.size === people.length ? new Set() : new Set(people.map((p) => p.id)))}>
                 {chosen.size === people.length ? 'Clear' : `Everyone (${people.length})`}
               </button>
@@ -201,7 +204,16 @@ export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
             <label key={p.id} class="check">
               <input type="radio" name="place" checked={placeId === p.id} onChange={() => setPlaceId(p.id)} />
               <span>
-                {p.name} <span class="muted">· {PLACE_TYPE_LABELS[p.type]}{p.quiet ? ', quiet' : ''}{p.stepFree ? ', step-free' : ''}</span>
+                {p.name}
+                {p.stepFree && (
+                  <>
+                    {' '}
+                    <span aria-hidden="true" title="Step-free">
+                      ♿
+                    </span>
+                    <span class="visually-hidden">, step-free</span>
+                  </>
+                )}
               </span>
             </label>
           ))}
@@ -227,10 +239,7 @@ export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
         <input id="invite-note" type="text" maxLength={LIMITS_INVITE.note} value={note} onInput={(e) => setNote(e.currentTarget.value)} />
       </div>
 
-      <p class="hint">
-        Everyone who says yes gets the same shape to hold up, so you can spot each other in a crowd. They see this and can say yes.
-        If they don’t, you won’t be told, and that’s fine.
-      </p>
+      <p class="hint">Everyone who says yes gets the same shape to hold up, so you can spot each other in a crowd.</p>
 
       {confirmAll && (
         <p class="card" role="alert">

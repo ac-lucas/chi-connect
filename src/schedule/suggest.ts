@@ -88,5 +88,5 @@ export function topicLine(p: Programme, session: Pick<ProgrammeSession, 'topics'
   if (!t) return null;
   const n = p.sessions.filter((s) => s.topics.includes(t)).length;
   if (n < 2) return null;
-  return `${labelOf(t)} comes up in ${n} sessions in this programme.`;
+  return `${labelOf(t)} comes up in ${n} sessions in this program.`;
 }

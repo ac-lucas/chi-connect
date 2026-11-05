@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { CloseButton } from '../ui/CloseButton';
 import { hasWebCrypto, matchSeed, newPairKey, pairSecret, type PairKey } from '../connect/pairing';
 import { cardFromSeed, type ShapeCard } from '../schedule/findme';
 import { ShapeCardView, ShapeGraphic } from './ShapeCard';
@@ -235,6 +236,7 @@ export function ConnectScreen({ profile, relay, initialCode, onOneWayCode, onCon
 
   return (
     <section class="stack" aria-labelledby="connect-heading">
+      <CloseButton onClick={onCancel} />
       <div>
         <h2 id="connect-heading" ref={heading} tabIndex={-1}>
           Connect

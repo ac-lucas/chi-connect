@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
+import { CloseButton } from '../ui/CloseButton';
 import { extractCode, fitLink } from '../connect/payload';
 import { QrCode } from '../connect/QrCode';
 import { toSharedProfile } from '../model/profile';
@@ -81,7 +82,7 @@ export function ShareCodeScreen({ profile, relay, onDone }: Props) {
   }, [six, sixLeft === 20]);
   const leftSpoken = sixLeft >= 60 ? `${Math.floor(sixLeft / 60)} minute${sixLeft >= 120 ? 's' : ''} ${sixLeft % 60} seconds left` : `${sixLeft} seconds left`;
 
-  async function getSix() {
+  async function getSix(speak = true) {
     if (!link) return;
     setBusy(true);
     setProblem(null);
@@ -89,7 +90,7 @@ export function ShareCodeScreen({ profile, relay, onDone }: Props) {
       const made = await createSixDigitCode(relay, extractCode(link));
       setSix(made);
       setNow(Date.now());
-      announce(`Your code is ${made.code.split('').join(' ')}. It works once, for 2 minutes.`);
+      if (speak) announce(`Your code is ${made.code.split('').join(' ')}. It works once, for 2 minutes.`);
     } catch (e) {
       const msg =
         e instanceof RelayError && e.problem === 'offline'
@@ -125,23 +126,60 @@ export function ShareCodeScreen({ profile, relay, onDone }: Props) {
   const until = expiresAt ? new Date(expiresAt).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' }) : '';
   const pretty = six ? `${six.code.slice(0, 3)} ${six.code.slice(3)}` : '';
 
+  // The six-digit code appears as soon as the link is ready: no extra tap. "New code" makes another once it expires.
+  useEffect(() => {
+    if (link && !six && !problem) void getSix(false);
+  }, [link]);
+
   return (
     <section class="stack" aria-labelledby="share-heading">
+      <CloseButton onClick={onDone} />
       <div>
         <h2 id="share-heading" ref={heading} tabIndex={-1}>
           Share
         </h2>
-        <p>
-          Anyone who scans this can see what you chose to share and send you a request. You decide whether to say yes. If you don’t, they’re never told.
-        </p>
+        <p>Share your profile with anyone who scans this, or who types your code.</p>
       </div>
+
+      <section class="card stack" aria-labelledby="six-heading">
+        <h3 id="six-heading">Your code</h3>
+        {six && sixLeft > 0 ? (
+          <>
+            <p class="six-code" aria-label={`Your code: ${six.code.split('').join(' ')}`}>
+              {pretty}
+            </p>
+            <p class="hint">
+              They type it under “Enter a code”. Works once, for{' '}
+              <span aria-hidden="true">
+                {Math.floor(sixLeft / 60)}:{String(sixLeft % 60).padStart(2, '0')} more
+              </span>
+              <span class="visually-hidden">2 minutes, {leftSpoken}</span>.
+            </p>
+          </>
+        ) : six ? (
+          <p>That code has expired.</p>
+        ) : !problem ? (
+          <p class="muted">Getting your code…</p>
+        ) : null}
+        {problem && (
+          <p class="error" role="alert">
+            {problem}
+          </p>
+        )}
+        {(six ? sixLeft === 0 : !!problem) && (
+          <div class="actions">
+            <button type="button" class="button secondary" onClick={() => void getSix()} disabled={busy || !link}>
+              {busy ? 'Getting a code…' : 'New code'}
+            </button>
+          </div>
+        )}
+      </section>
 
       {link ? (
         <div class="stack">
           <div class="qr-wrap">
-            <QrCode text={link} label={`Your share code. It works until ${until}.`} />
+            <QrCode text={link} label={`Your QR code. It works until ${until}.`} />
           </div>
-          <p class="hint">Works until {until}.</p>
           {leftOut.length > 0 && <p class="hint">Left out to keep the code easy to scan: {leftOut.join(', ')}.</p>}
           <div class="actions">
             <button type="button" class="button secondary" onClick={shareLink}>
@@ -163,44 +201,8 @@ export function ShareCodeScreen({ profile, relay, onDone }: Props) {
           Couldn’t make your code on this device. Reload Pebble and try again.
         </p>
       ) : (
-        <p class="muted">Making your code…</p>
+        <p class="muted">Making your QR code…</p>
       )}
-
-      <section class="card stack" aria-labelledby="six-heading">
-        <h3 id="six-heading">Or read out a code</h3>
-        {six && sixLeft > 0 ? (
-          <>
-            <p class="six-code" aria-label={`Your code: ${six.code.split('').join(' ')}`}>
-              {pretty}
-            </p>
-            <p class="hint">
-              They type this in Pebble under “Enter a code”. Works once, for{' '}
-              <span aria-hidden="true">
-                {Math.floor(sixLeft / 60)}:{String(sixLeft % 60).padStart(2, '0')} more
-              </span>
-              <span class="visually-hidden">2 minutes, {leftSpoken}</span>.
-            </p>
-          </>
-        ) : (
-          <p>A six-digit code they can type in instead of scanning. It works once, for 2 minutes.</p>
-        )}
-        {problem && (
-          <p class="error" role="alert">
-            {problem}
-          </p>
-        )}
-        <div class="actions">
-          <button type="button" class="button secondary" onClick={getSix} disabled={busy || !link}>
-            {busy ? 'Getting a code…' : six ? 'New code' : 'Get a six-digit code'}
-          </button>
-        </div>
-      </section>
-
-      <div class="actions">
-        <button type="button" class="button quiet" onClick={onDone}>
-          Done
-        </button>
-      </div>
     </section>
   );
 }

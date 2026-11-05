@@ -6,7 +6,7 @@ import { energyToday } from '../schedule/energy';
 import { buildRecap, recapText, type Recap } from '../schedule/recap';
 import { getSetting, listAllNotes, listAllSchedule, listCatchUp, listConnections, listFollowUps, listInvites, putFollowUp } from '../storage/db';
 import type { Connection, FollowUp } from '../model/types';
-import { download, toCsv, toIcs, toVCard } from '../export/exports';
+import { download, toCatchUpCsv, toCsv, toIcs, toVCard } from '../export/exports';
 import { announce } from '../ui/announce';
 import { useLive } from '../ui/useLive';
 import { useScreenHeading } from '../ui/useScreenHeading';
@@ -67,15 +67,42 @@ export function RecapScreen({ programme, onBack }: { programme: Programme; onBac
           <p>Save some sessions and this fills up as the week goes on.</p>
         </div>
       ) : (
-        <ol class="recap">
-          <li class="card recap-card">
-            <p class="recap-big">{recap.sessions}</p>
-            <p>
-              sessions across {recap.days} {recap.days === 1 ? 'day' : 'days'}
-            </p>
-          </li>
+        <>
+          {/* Small tiles side by side: the numbers at a glance, then topics, then follow-ups. */}
+          <ul class="recap-stats">
+            <li class="recap-stat">
+              <span class="recap-num">{recap.sessions}</span> {recap.sessions === 1 ? 'session' : 'sessions'}, {recap.days}{' '}
+              {recap.days === 1 ? 'day' : 'days'}
+            </li>
+            {recap.wildcards.length > 0 && (
+              <li class="recap-stat">
+                <span class="recap-num">{recap.wildcards.length}</span> {recap.wildcards.length === 1 ? 'wildcard' : 'wildcards'}
+              </li>
+            )}
+            {recap.breathers > 0 && (
+              <li class="recap-stat">
+                <span class="recap-num">{recap.breathers}</span> {recap.breathers === 1 ? 'breather' : 'breathers'}
+              </li>
+            )}
+            {recap.meetups > 0 && (
+              <li class="recap-stat">
+                <span class="recap-num">{recap.meetups}</span> {recap.meetups === 1 ? 'meetup' : 'meetups'}
+              </li>
+            )}
+            {recap.people > 0 && (
+              <li class="recap-stat">
+                <span class="recap-num">{recap.people}</span> new {recap.people === 1 ? 'connection' : 'connections'}
+              </li>
+            )}
+            {recap.catchUp > 0 && (
+              <li class="recap-stat">
+                <span class="recap-num">{recap.catchUp}</span> to catch up on
+                {recap.papers ? `, ${recap.papers} ${recap.papers === 1 ? 'paper' : 'papers'}` : ''}
+              </li>
+            )}
+          </ul>
           {recap.topics.length > 0 && (
-            <li class="card recap-card">
+            <div class="stack-tight">
               <p class="recap-label">You spent your time on</p>
               <ul class="chips" aria-label="Your top topics">
                 {recap.topics.map((t) => (
@@ -84,49 +111,14 @@ export function RecapScreen({ programme, onBack }: { programme: Programme; onBac
                   </li>
                 ))}
               </ul>
-            </li>
+            </div>
           )}
-          {recap.wildcards.length > 0 && (
-            <li class="card recap-card">
-              <p class="recap-big">{recap.wildcards.length}</p>
-              <p>{recap.wildcards.length === 1 ? 'wildcard detour' : 'wildcard detours'}</p>
-              <p class="muted">{recap.wildcards.join(' · ')}</p>
-            </li>
-          )}
-          {recap.breathers > 0 && (
-            <li class="card recap-card">
-              <p class="recap-big">{recap.breathers}</p>
-              <p>{recap.breathers === 1 ? 'breather' : 'breathers'} so far. Pacing counts.</p>
-            </li>
-          )}
-          {(recap.meetups > 0 || recap.people > 0) && (
-            <li class="card recap-card">
-              {recap.meetups > 0 && (
-                <p>
-                  <span class="recap-big inline">{recap.meetups}</span> {recap.meetups === 1 ? 'meetup' : 'meetups'}
-                </p>
-              )}
-              {recap.people > 0 && (
-                <p>
-                  <span class="recap-big inline">{recap.people}</span> new {recap.people === 1 ? 'connection' : 'connections'}
-                </p>
-              )}
-            </li>
-          )}
-          {recap.catchUp > 0 && (
-            <li class="card recap-card">
-              <p class="recap-big">{recap.catchUp}</p>
-              <p>
-                to catch up on later{recap.papers ? `, with ${recap.papers} ${recap.papers === 1 ? 'paper' : 'papers'}` : ''}
-              </p>
-            </li>
-          )}
-        </ol>
+        </>
       )}
       <section class="stack" aria-labelledby="fu-all">
         <h3 id="fu-all">Follow-ups</h3>
         {followUps.length === 0 ? (
-          <p class="muted">None yet. Add them on someone’s page, or tick “Follow up” in a quick note.</p>
+          <p class="muted">None yet. Add them on someone’s page.</p>
         ) : (
           <ul class="followups">
             {followUps.map((f) => {
@@ -159,6 +151,10 @@ export function RecapScreen({ programme, onBack }: { programme: Programme; onBac
 
       <section class="stack" aria-labelledby="take-heading">
         <h3 id="take-heading">Take it with you</h3>
+        <p>
+          <strong>Export what you want to keep.</strong> Pebble keeps everything only on this phone, and browsers can clear a
+          site’s data, for example after a while without a visit. Nothing is backed up anywhere else.
+        </p>
         <p class="hint">Files made on this phone, from your own data. Only what each person chose to share is included.</p>
         <div class="actions">
           <button type="button" class="button secondary" onClick={async () => download('pebble-contacts.vcf', 'text/vcard', toVCard(await listConnections(), await listAllNotes()))}>
@@ -178,6 +174,14 @@ export function RecapScreen({ programme, onBack }: { programme: Programme; onBac
             onClick={async () => download('pebble-follow-ups.ics', 'text/calendar', toIcs(await listFollowUps(), await listConnections()))}
           >
             Follow-up reminders (calendar)
+          </button>
+          <button
+            type="button"
+            class="button secondary"
+            disabled={!recap || recap.catchUp === 0}
+            onClick={async () => download('pebble-catch-up.csv', 'text/csv', toCatchUpCsv(await listCatchUp()))}
+          >
+            Sessions you missed, with papers (CSV)
           </button>
         </div>
         {!followUps.some((f) => f.due && !f.done) && <p class="hint">Reminders need a follow-up with a date.</p>}

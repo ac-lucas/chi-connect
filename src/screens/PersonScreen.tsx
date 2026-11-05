@@ -3,7 +3,9 @@ import type { Connection, Tag } from '../model/types';
 import { NotesSection } from './NotesSection';
 import { approveRequest } from '../relay/protocol';
 import { RelayError, type Transport } from '../relay/transport';
-import { listAllSchedule, removeConnection, updateConnection, getHome } from '../storage/db';
+import { getSetting, listAllSchedule, removeConnection, updateConnection, getHome } from '../storage/db';
+import { personOpeners } from '../data/icebreakers';
+import { sharedTags } from '../model/tags';
 import type { Programme } from '../programme/types';
 import { dayLabel, timeRange } from '../programme/programme';
 import { shareSessionsIfChanged } from '../schedule/overlap';
@@ -32,6 +34,7 @@ export function PersonScreen({ connection: c, myTags, justConnected, relay, prog
   const mySessionIds =
     useLive(async () => (await listAllSchedule()).filter((s) => s.type === 'session' && s.programmeSessionId).map((s) => s.programmeSessionId!), ['schedule']) ?? [];
   const theirIds = c.sharedSessionIds;
+  const quiet = useLive(async () => !!(await getSetting('quietMode')), ['settings']) ?? false;
   const both = programme ? programme.sessions.filter((s) => mySessionIds.includes(s.id) && theirIds.includes(s.id)) : [];
 
   async function toggleSharing(on: boolean) {
@@ -113,6 +116,22 @@ export function PersonScreen({ connection: c, myTags, justConnected, relay, prog
       <SharedTopics mine={myTags} theirs={c.profile.tags} name={name} />
       <ProfileCard profile={c.profile} />
 
+      {c.state === 'connected' && !quiet && (
+        <section class="stack-tight" aria-labelledby="talk-heading">
+          <h3 id="talk-heading">Things to talk about</h3>
+          <ul class="openers">
+            {personOpeners({
+              shared: sharedTags(myTags, c.profile.tags ?? []).map((t) => t.label),
+              theirs: (c.profile.tags ?? []).map((t) => t.label),
+              bothSessions: both.map((s) => s.title),
+              key: c.id,
+            }).map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {c.state === 'pending-received' && (
         <section class="card stack" aria-labelledby="decide-heading">
           <h3 id="decide-heading">Connect with {name}?</h3>
@@ -138,7 +157,7 @@ export function PersonScreen({ connection: c, myTags, justConnected, relay, prog
           <h3 id="waiting-heading">Waiting to hear back</h3>
           <p>They’ll show up as connected once they say yes. If they don’t, you won’t hear anything, and that’s fine.</p>
           <div class="actions">
-            <button type="button" class="button secondary" onClick={() => dismiss('Request cancelled.')}>
+            <button type="button" class="button secondary" onClick={() => dismiss('Request canceled.')}>
               Cancel request
             </button>
           </div>
@@ -152,7 +171,6 @@ export function PersonScreen({ connection: c, myTags, justConnected, relay, prog
             <input type="checkbox" checked={c.scheduleSharing} onChange={(e) => void toggleSharing(e.currentTarget.checked)} />
             <span>Let {name} see which sessions I’ve saved</span>
           </label>
-          <p class="hint">Only the sessions, nothing else. Turn it off any time and your list is taken back.</p>
           {theirIds.length === 0 && !c.demo && <p class="muted">{name} hasn’t shared their sessions with you.</p>}
           {both.length > 0 && (
             <>
