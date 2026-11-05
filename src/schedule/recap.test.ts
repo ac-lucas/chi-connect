@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { CatchUpItem, Connection, Invite, ScheduleItem } from '../model/types';
-import { makeSampleProgramme } from '../programme/sample';
+import { testProgramme } from '../test/programme';
 import { buildRecap, recapText } from './recap';
 
-const p = makeSampleProgramme(new Date(2027, 3, 12).getTime());
+const p = testProgramme();
 const s = (id: string, extra: Partial<ScheduleItem> = {}): ScheduleItem => {
   const ps = p.sessions.find((x) => x.id === id)!;
   return { id: `i-${id}`, type: 'session', source: 'user', title: ps.title, start: ps.start, end: ps.end, programmeSessionId: id, ...extra };
@@ -11,7 +11,7 @@ const s = (id: string, extra: Partial<ScheduleItem> = {}): ScheduleItem => {
 
 describe('buildRecap', () => {
   it('counts only your own plans, with top topics and no names', () => {
-    const items = [s('sample-1-2-1'), s('sample-1-3-1', { fromWildcard: true }), s('sample-2-2-1')];
+    const items = [s('t-1'), s('t-2', { fromWildcard: true }), s('t-3')];
     const invites = [
       { outgoing: true, acceptedIds: ['x'], status: 'pending' },
       { outgoing: true, acceptedIds: [], status: 'pending' },

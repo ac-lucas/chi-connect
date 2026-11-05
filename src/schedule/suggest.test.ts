@@ -12,7 +12,6 @@ const item = (id: string, from: number, to: number, type: ScheduleItem['type'] =
 
 const programme: Programme = {
   name: 'x',
-  sample: false,
   sessions: [
     ses('mine', at(9), at(10, 30), ['haptics']),
     ses('haptics-vr', at(11), at(12), ['haptics', 'vr']),

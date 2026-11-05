@@ -77,7 +77,7 @@ export function SuggestionsPanel({ programme, items, connections, level, day, is
   // F24 / F16: a session just ended.
   const ended = isToday ? recentlyEnded(saved, now) : null;
   const endedSession = ended && programme.sessions.find((s) => s.id === ended.programmeSessionId);
-  const going = ended ? alsoGoing(ended.programmeSessionId, connections, programme) : [];
+  const going = ended ? alsoGoing(ended.programmeSessionId, connections) : [];
   const topic = endedSession?.topics[0] ? (knownTagById(endedSession.topics[0])?.label ?? null) : null;
   const talkKey = ended ? `talk:${ended.id}` : '';
   const nudgeKey = ended ? `nudge:${ended.id}` : '';
@@ -103,7 +103,7 @@ export function SuggestionsPanel({ programme, items, connections, level, day, is
     const gaps = freeGaps([...busy, { id: 'end', start: lastEnd, end: lastEnd + MIN, kind: 'session' }], from, 30);
     wildcard = pickWildcard(programme, gaps, myTopics, new Set(saved.map((s) => s.programmeSessionId ?? '')));
   }
-  const wildGoing = wildcard ? alsoGoing(wildcard.session.id, connections, programme) : [];
+  const wildGoing = wildcard ? alsoGoing(wildcard.session.id, connections) : [];
 
   async function addWildcard() {
     if (!wildcard) return;

@@ -1,5 +1,7 @@
 // Demo connections so someone trying the app alone can see everything. Fictional people.
 // Always shown with a "Demo" label. Topics overlap with common picks so shared-topic highlights appear.
+// Their saved sessions are fixed and overlap the demo schedule (src/data/demoSchedule.ts), so "also going" and
+// talk-about-the-talk show up.
 import { resolveTag } from '../model/tags';
 import type { Connection, Note, Tag } from '../model/types';
 
@@ -17,7 +19,7 @@ export const DEMO_CONNECTIONS: Connection[] = [
     state: 'connected',
     via: 'demo',
     scheduleSharing: false,
-    sharedSessionIds: [],
+    sharedSessionIds: ['s224941', 's224926', 's225154'], // Tue, Thu, Fri sessions in the demo schedule
     demo: true,
   },
   {
@@ -31,7 +33,7 @@ export const DEMO_CONNECTIONS: Connection[] = [
     state: 'connected',
     via: 'demo',
     scheduleSharing: false,
-    sharedSessionIds: [],
+    sharedSessionIds: ['s214933', 's225156', 's215056'], // the keynotes and Wednesday's visualisation session
     demo: true,
   },
   {
@@ -45,7 +47,7 @@ export const DEMO_CONNECTIONS: Connection[] = [
     state: 'connected',
     via: 'demo',
     scheduleSharing: false,
-    sharedSessionIds: [],
+    sharedSessionIds: [], // Yuki doesn't share their sessions: shows what that looks like
     demo: true,
   },
 ];

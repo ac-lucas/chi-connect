@@ -46,7 +46,6 @@ describe('transformFeed', () => {
     expect(p.edition).toBe('example');
     expect(p.revision).toBe(3);
     expect(p.timeZone).toBe('Europe/Brussels');
-    expect(p.sample).toBe(false);
     expect(p.credit).toMatch(/CC BY-NC-SA 4\.0/);
   });
 

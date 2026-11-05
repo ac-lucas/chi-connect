@@ -1,6 +1,5 @@
 import { knownTagById, normaliseTagText } from '../model/tags';
 import { isOver, shiftToAnchor } from './preview';
-import { makeSampleProgramme } from './sample';
 import type { FeedProgramme } from './transform';
 import type { Programme, ProgrammeSession } from './types';
 
@@ -39,8 +38,7 @@ export function programmeDays(p: Programme): number[] {
  * The programme to show: the feed's, if one has been downloaded, else the sample. A feed programme that is
  * already over (last year's) is shown as a preview, its days moved to start on the anchor day.
  */
-export function resolveProgramme(anchor: number, feed: FeedProgramme | undefined, now = Date.now()): Programme {
-  if (!feed || !feed.sessions.length) return makeSampleProgramme(anchor);
+export function resolveProgramme(anchor: number, feed: FeedProgramme, now = Date.now()): Programme {
   return isOver(feed, now) ? shiftToAnchor(feed, anchor, feed.timeZone) : feed;
 }
 

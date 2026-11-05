@@ -34,56 +34,56 @@ const version = (edition: string, revision: number) => ({
 });
 
 describe('checkFeed', () => {
-  it('falls back to 2026 while 2027 is unpublished, and downloads the revision file', async () => {
+  it('with polling off, a new install fetches the frozen preview once and never asks for 2027', async () => {
     const { f, calls } = fakeFetch({
       [`${BASE}/chi2026/version.json`]: { body: version('chi2026', 1) },
       [`${BASE}/chi2026/revisions/001.json`]: { body: programmeFile },
     });
     const r = await checkFeed(null, 0, { now: 1e12, fetchImpl: f, base: BASE });
     expect(r.programme?.edition).toBe('chi2026');
-    expect(r.programme?.revision).toBe(1);
-    expect(calls[0]).toBe(`${BASE}/chi2027/version.json?t=1000000000000`);
-    expect(calls[1]).toBe(`${BASE}/chi2026/version.json?t=1000000000000`);
+    expect(calls).toEqual([`${BASE}/chi2026/version.json?t=1000000000000`, `${BASE}/chi2026/revisions/001.json`]);
   });
 
-  it("remembers a revision it can't use, and skips it until the revision moves on", async () => {
+  it('with polling off and a programme held, makes no requests at all', async () => {
+    const { f, calls } = fakeFetch({});
+    const r = await checkFeed({ edition: 'chi2026', revision: 1 }, 0, { now: 1e12, fetchImpl: f, base: BASE });
+    expect(r).toEqual({ programme: null, checked: false });
+    expect(calls).toEqual([]);
+  });
+
+  it("remembers a revision it can't use, and doesn't download it again", async () => {
     const routes = {
-      [`${BASE}/chi2027/version.json`]: { body: version('chi2027', 3) },
-      [`${BASE}/chi2027/revisions/003.json`]: { body: emptyFile },
+      [`${BASE}/chi2026/version.json`]: { body: version('chi2026', 3) },
+      [`${BASE}/chi2026/revisions/003.json`]: { body: emptyFile },
     };
     const first = fakeFetch(routes);
     const r = await checkFeed(null, 0, { now: 1e12, fetchImpl: first.f, base: BASE });
-    expect(r.unusable).toEqual({ edition: 'chi2027', revision: 3 });
+    expect(r.unusable).toEqual({ edition: 'chi2026', revision: 3 });
     const again = fakeFetch(routes);
     await checkFeed(null, 0, { now: 1e12 + POLL_MS, fetchImpl: again.f, base: BASE, skip: r.unusable });
-    expect(again.calls.some((c) => c.includes('/revisions/'))).toBe(false); // not downloaded again
+    expect(again.calls.some((c) => c.includes('/revisions/'))).toBe(false);
   });
 
-  it('falls back to 2026 when 2027 errors, not only when it is missing', async () => {
-    const { f } = fakeFetch({
-      [`${BASE}/chi2027/version.json`]: { status: 503, body: {} },
-      [`${BASE}/chi2026/version.json`]: { body: version('chi2026', 1) },
-      [`${BASE}/chi2026/revisions/001.json`]: { body: programmeFile },
+  describe('once polling the newest edition is switched on', () => {
+    it('polls only 2027 when a programme is held, and downloads only when the revision moves', async () => {
+      const { f, calls } = fakeFetch({ [`${BASE}/chi2027/version.json`]: { body: version('chi2027', 17) } });
+      expect(await checkFeed({ edition: 'chi2027', revision: 17 }, 0, { now: 1e12, fetchImpl: f, base: BASE, pollNewest: true })).toEqual({ programme: null, checked: true });
+      expect(calls).toHaveLength(1);
     });
-    expect((await checkFeed(null, 0, { now: 1e12, fetchImpl: f, base: BASE })).programme?.edition).toBe('chi2026');
-  });
 
-  it('never swaps a held 2027 programme for 2026 when 2027 has a hiccup', async () => {
-    const { f, calls } = fakeFetch({
-      [`${BASE}/chi2027/version.json`]: { status: 503, body: {} },
-      [`${BASE}/chi2026/version.json`]: { body: version('chi2026', 1) },
-      [`${BASE}/chi2026/revisions/001.json`]: { body: programmeFile },
+    it('never swaps a held programme for the preview when 2027 has a hiccup', async () => {
+      const { f, calls } = fakeFetch({ [`${BASE}/chi2027/version.json`]: { status: 503, body: {} } });
+      expect((await checkFeed({ edition: 'chi2027', revision: 5 }, 0, { now: 1e12, fetchImpl: f, base: BASE, pollNewest: true })).programme).toBeNull();
+      expect(calls.every((c) => c.includes('chi2027'))).toBe(true);
     });
-    const r = await checkFeed({ edition: 'chi2027', revision: 5 }, 0, { now: 1e12, fetchImpl: f, base: BASE });
-    expect(r.programme).toBeNull();
-    expect(calls.some((c) => c.includes('chi2026'))).toBe(false);
-  });
 
-  it('only downloads when the revision moves', async () => {
-    const { f, calls } = fakeFetch({ [`${BASE}/chi2027/version.json`]: { body: version('chi2027', 17) } });
-    const r = await checkFeed({ edition: 'chi2027', revision: 17 }, 0, { now: 1e12, fetchImpl: f, base: BASE });
-    expect(r).toEqual({ programme: null, checked: true });
-    expect(calls).toHaveLength(1);
+    it('moves from the preview to 2027 when it appears', async () => {
+      const { f } = fakeFetch({
+        [`${BASE}/chi2027/version.json`]: { body: version('chi2027', 1) },
+        [`${BASE}/chi2027/revisions/001.json`]: { body: programmeFile },
+      });
+      expect((await checkFeed({ edition: 'chi2026', revision: 1 }, 0, { now: 1e12, fetchImpl: f, base: BASE, pollNewest: true })).programme?.edition).toBe('chi2027');
+    });
   });
 
   it('never asks more than once a minute', async () => {
@@ -94,7 +94,7 @@ describe('checkFeed', () => {
   });
 
   it('refuses a revision URL that points anywhere else', async () => {
-    const { f, calls } = fakeFetch({ [`${BASE}/chi2027/version.json`]: { body: { revision: 2, revision_url: 'https://evil.example/x.json' } } });
+    const { f, calls } = fakeFetch({ [`${BASE}/chi2026/version.json`]: { body: { revision: 2, revision_url: 'https://evil.example/x.json' } } });
     expect((await checkFeed(null, 0, { now: 1e12, fetchImpl: f, base: BASE })).programme).toBeNull();
     expect(calls).toHaveLength(1);
   });
@@ -128,7 +128,6 @@ describe('preview', () => {
   // 13 April 2026, 09:00 and 15:30 in the programme's time zone (UTC+2), and a session the next day.
   const p: Programme = {
     name: 'Example',
-    sample: false,
     sessions: [
       { id: 'a', title: 'A', start: Date.UTC(2026, 3, 13, 7, 0), end: Date.UTC(2026, 3, 13, 8, 30), format: 'papers', topics: [] },
       { id: 'b', title: 'B', start: Date.UTC(2026, 3, 13, 13, 30), end: Date.UTC(2026, 3, 13, 15), format: 'papers', topics: [] },

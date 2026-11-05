@@ -52,16 +52,13 @@ describe('receiving invites', () => {
     expect(got?.fromConnectionId).toBe(sam.id);
   });
 
-  it('only the sender can cancel or change an invite', async () => {
+  it('only the sender can cancel an invite', async () => {
     const sam = conn('Sam');
     const eve = conn('Eve');
     const w = parseWireInvite(wire())!;
     await handleInviteMessage(sam, { t: 'invite', v: 1, invite: w }, Date.now());
     expect(await handleInviteMessage(eve, { t: 'cancel', v: 1, id: w.id }, Date.now())).toBeNull();
-    expect(await handleInviteMessage(eve, { t: 'update', v: 1, id: w.id, place: 'Elsewhere' }, Date.now())).toBeNull();
-    expect((await getInvite(w.id))?.place).toBe('Lunch hall');
-    expect(await handleInviteMessage(sam, { t: 'update', v: 1, id: w.id, place: 'Courtyard' }, Date.now())).toBe('changed');
-    expect((await getInvite(w.id))?.place).toBe('Courtyard');
+    expect((await getInvite(w.id))?.status).toBe('pending');
     expect(await handleInviteMessage(sam, { t: 'cancel', v: 1, id: w.id }, Date.now())).toBe('changed');
     expect(await pendingIncoming()).toEqual([]);
   });
@@ -76,8 +73,7 @@ describe('receiving invites', () => {
     expect(tomb.status).toBe('declined');
     expect([tomb.place, tomb.note, tomb.meetingSpot]).toEqual([undefined, undefined, undefined]);
     expect(await handleInviteMessage(sam, { t: 'invite', v: 1, invite: w }, Date.now())).toBeNull(); // replayed
-    expect(await handleInviteMessage(sam, { t: 'update', v: 1, id: w.id, place: 'Somewhere' }, Date.now())).toBeNull();
-    expect((await getInvite(w.id))!.place).toBeUndefined(); // an update can't put details back
+    expect(await handleInviteMessage(sam, { t: 'cancel', v: 1, id: w.id }, Date.now())).toBeNull(); // tombstone stays as is
     expect(await pendingIncoming()).toEqual([]);
     await pendingIncoming(w.start + 1); // its time has come: the tombstone goes too
     expect(await getInvite(w.id)).toBeNull();

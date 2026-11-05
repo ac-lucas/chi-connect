@@ -6,7 +6,7 @@ import { RelayError, type Transport } from '../relay/transport';
 import { listAllSchedule, removeConnection, updateConnection } from '../storage/db';
 import type { Programme } from '../programme/types';
 import { dayLabel, timeRange } from '../programme/programme';
-import { demoSessionIds, shareSessionsIfChanged } from '../schedule/overlap';
+import { shareSessionsIfChanged } from '../schedule/overlap';
 import { announce } from '../ui/announce';
 import { useScreenHeading } from '../ui/useScreenHeading';
 import { ProfileCard } from './ProfileCard';
@@ -33,7 +33,7 @@ export function PersonScreen({ connection: c, myTags, justConnected, relay, prog
   useEffect(() => {
     void listAllSchedule().then((all) => setMySessionIds(all.filter((s) => s.type === 'session' && s.programmeSessionId).map((s) => s.programmeSessionId!)));
   }, [c.id]);
-  const theirIds = programme ? (c.demo ? demoSessionIds(c, programme) : c.sharedSessionIds) : [];
+  const theirIds = c.sharedSessionIds;
   const both = programme ? programme.sessions.filter((s) => mySessionIds.includes(s.id) && theirIds.includes(s.id)) : [];
 
   async function toggleSharing(on: boolean) {

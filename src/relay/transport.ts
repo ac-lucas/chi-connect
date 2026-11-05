@@ -1,3 +1,4 @@
+import { readTextCapped, timeoutSignal } from '../util/stream';
 import { mailboxIdFor } from './crypto';
 
 // How the app talks to the relay. Two implementations behind one interface:
@@ -36,48 +37,12 @@ export interface Transport {
 
 const TIMEOUT_MS = 10_000;
 
-/**
- * A signal that aborts after `ms`. AbortSignal.timeout is newer than the rest of what the app uses (missing on
- * older iOS Safari: verify), so fall back to AbortController + setTimeout, or no timeout at all.
- */
-export function timeoutSignal(ms: number): AbortSignal | undefined {
-  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') return AbortSignal.timeout(ms);
-  if (typeof AbortController === 'undefined') return undefined;
-  const c = new AbortController();
-  setTimeout(() => c.abort(), ms);
-  return c.signal;
-}
+export { timeoutSignal } from '../util/stream';
 const MAX_BOXES = 100;
 /** Largest relay reply we read. The relay caps an inbox reply at 512 KB of ciphertext. */
 const MAX_REPLY_BYTES = 1024 * 1024;
 const ID = /^[A-Za-z0-9_-]{22}$/;
 const CT = /^[A-Za-z0-9_-]{1,16384}$/;
-
-/** Read a reply body without holding more than `max` bytes. */
-async function readText(res: Response, max: number): Promise<string> {
-  if (Number(res.headers.get('Content-Length') ?? '0') > max) throw new Error('too-large');
-  if (!res.body) return res.text();
-  const reader = res.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > max) {
-      await reader.cancel();
-      throw new Error('too-large');
-    }
-    chunks.push(value);
-  }
-  const bytes = new Uint8Array(total);
-  let at = 0;
-  for (const c of chunks) {
-    bytes.set(c, at);
-    at += c.byteLength;
-  }
-  return new TextDecoder().decode(bytes);
-}
 
 /**
  * Check an inbox reply message by message. The relay is not trusted with structure either: anything malformed is
@@ -109,7 +74,9 @@ export class RelayTransport implements Transport {
     try {
       res = await fetch(new URL(path, this.base), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        // text/plain is a "simple" request type, so the browser sends no CORS preflight first: half the requests.
+        // The body is still JSON; the relay parses it from text either way.
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
         body: JSON.stringify(body),
         signal: timeoutSignal(TIMEOUT_MS),
         credentials: 'omit',
@@ -120,7 +87,7 @@ export class RelayTransport implements Transport {
     }
     let data: T;
     try {
-      data = JSON.parse(await readText(res, MAX_REPLY_BYTES)) as T;
+      data = JSON.parse(await readTextCapped(res, MAX_REPLY_BYTES)) as T;
     } catch {
       throw new RelayError('server');
     }

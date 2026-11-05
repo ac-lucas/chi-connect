@@ -10,6 +10,7 @@ export interface Settings {
   energy: EnergySetting;
   persistRequested: boolean;
   demoSeeded: boolean;
+  demoScheduleSeeded: boolean;
   /** One-way connect codes we've shown recently. */
   intros: Intro[];
   /** Day 1 of the sample programme (local midnight), fixed the first time the app is opened. */
@@ -251,9 +252,10 @@ export async function getIntros(): Promise<Intro[]> {
  * the same moment can't be lost.
  */
 export async function pruneIntros(keepUntil: (i: Intro) => number, now = Date.now()): Promise<void> {
-  await updateSetting('intros', (saved = []) =>
-    saved.filter((i) => !!i.publicKey && (!!i.privateKey || !!i.privateJwk) && keepUntil(i) > now),
-  );
+  await updateSetting('intros', (saved = []) => {
+    const kept = saved.filter((i) => !!i.publicKey && (!!i.privateKey || !!i.privateJwk) && keepUntil(i) > now);
+    return kept.length === saved.length ? saved : kept; // nothing expired: no write
+  });
 }
 
 export async function saveIntros(intros: Intro[]): Promise<void> {
@@ -262,6 +264,20 @@ export async function saveIntros(intros: Intro[]): Promise<void> {
     'intros',
     intros.map((i) => (i.privateJwk ? { ...i, privateKey: undefined } : i)),
   );
+}
+
+/** Put the ready-made demo schedule in place, once ever. Removing any of it sticks. */
+export async function seedDemoScheduleOnce(items: ScheduleItem[]): Promise<boolean> {
+  if (!items.length) return false;
+  const tx = (await db()).transaction(['settings', 'schedule'], 'readwrite');
+  if (await tx.objectStore('settings').get('demoScheduleSeeded')) {
+    await tx.done;
+    return false;
+  }
+  for (const item of items) await tx.objectStore('schedule').put(item);
+  await tx.objectStore('settings').put(true, 'demoScheduleSeeded');
+  await tx.done;
+  return true;
 }
 
 /** Add the demo connections once. Removing them later is respected: they are not re-added. */
@@ -289,13 +305,14 @@ export async function deleteCatchUp(programmeSessionId: string): Promise<void> {
 async function updateSetting<K extends keyof Settings>(key: K, fn: (current: Settings[K] | undefined) => Settings[K]): Promise<void> {
   const tx = (await db()).transaction('settings', 'readwrite');
   const current = (await tx.store.get(key)) as Settings[K] | undefined;
-  await tx.store.put(fn(current), key);
+  const next = fn(current);
+  if (next !== current) await tx.store.put(next, key); // returning the same value means "no change": no write
   await tx.done;
 }
 
 /** Remember a dismissed suggestion. */
 export async function dismiss(key: string): Promise<void> {
-  await updateSetting('dismissed', (list = []) => (list.includes(key) ? list : [...list, key].slice(-300)));
+  await updateSetting('dismissed', (list) => (list?.includes(key) ? list : [...(list ?? []), key].slice(-300)));
 }
 
 // Invites
@@ -312,12 +329,8 @@ export async function deleteInvite(id: string): Promise<void> {
   await (await db()).delete('invites', id);
 }
 /** The schedule entry for an invite we sent or accepted, if any. */
-export async function scheduleItemForInvite(inviteId: string): Promise<ScheduleItem | null> {
-  return (await listAllSchedule()).find((s) => s.inviteId === inviteId) ?? null;
-}
-
-/** Day 1 of the sample programme: today, the first time this is asked, and the same day after that. */
-export async function getSampleAnchor(now = Date.now()): Promise<number> {
+/** The day a preview programme starts on (its first day is moved here). */
+export async function getPreviewAnchor(now = Date.now()): Promise<number> {
   const saved = await getSetting('sampleAnchor');
   if (saved) return saved;
   const d = new Date(now);
@@ -331,13 +344,6 @@ export async function listAllSchedule(): Promise<ScheduleItem[]> {
 }
 
 /** Drop saved sessions from the sample programme once a real programme is in use. */
-export async function removeSampleSessions(): Promise<number> {
-  const d = await db();
-  const stale = (await d.getAll('schedule')).filter((s) => s.programmeSessionId?.startsWith('sample-'));
-  for (const s of stale) await d.delete('schedule', s.id);
-  return stale.length;
-}
-
 /**
  * Keep saved sessions in step with the programme: a session that moved, changed room or was renamed is updated
  * in your day. Returns how many changed.
@@ -374,7 +380,7 @@ export async function removeProgrammeSessions(): Promise<number> {
 }
 
 export async function skipBreak(key: string): Promise<void> {
-  await updateSetting('skippedBreaks', (list = []) => (list.includes(key) ? list : [...list, key].slice(-500)));
+  await updateSetting('skippedBreaks', (list) => (list?.includes(key) ? list : [...(list ?? []), key].slice(-500)));
 }
 
 /**

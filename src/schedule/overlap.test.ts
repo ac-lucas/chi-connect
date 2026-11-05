@@ -3,10 +3,9 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { randomId } from '../model/ids';
 import { resolveTag } from '../model/tags';
 import type { Connection } from '../model/types';
-import { makeSampleProgramme } from '../programme/sample';
 import { SimulatedTransport } from '../relay/transport';
 import { getConnection, putConnection, putScheduleItem, resetDatabaseForTests } from '../storage/db';
-import { alsoGoing, demoSessionIds, handleSessionsMessage, namesList, shareSessionsIfChanged } from './overlap';
+import { alsoGoing, handleSessionsMessage, namesList, shareSessionsIfChanged } from './overlap';
 
 let n = 0;
 beforeEach(async () => {
@@ -92,23 +91,15 @@ describe('seeing who is going', () => {
   it('stores a list that arrives and shows overlaps', async () => {
     const sam = real('Sam', false);
     await putConnection(sam);
-    await handleSessionsMessage(sam, ['sample-1-2-1']);
-    const p = makeSampleProgramme(new Date(2027, 3, 12).getTime());
+    await handleSessionsMessage(sam, ['t-1']);
     const stored = (await getConnection(sam.id))!;
-    expect(alsoGoing('sample-1-2-1', [stored], p).map((c) => c.profile.displayName)).toEqual(['Sam']);
-    expect(alsoGoing('sample-1-2-2', [stored], p)).toEqual([]);
+    expect(alsoGoing('t-1', [stored]).map((c) => c.profile.displayName)).toEqual(['Sam']);
+    expect(alsoGoing('t-2', [stored])).toEqual([]);
   });
 
-  it('gives demo people stable, topic-matched sessions', () => {
-    const p = makeSampleProgramme(new Date(2027, 3, 12).getTime());
-    const mina: Connection = { ...real('Mina', false), id: 'demo-mina', demo: true, profile: { displayName: 'Mina', tags: [resolveTag('Haptics')!, resolveTag('VR')!] } };
-    const ids = demoSessionIds(mina, p);
-    expect(ids.length).toBeGreaterThan(0);
-    expect(demoSessionIds(mina, p)).toEqual(ids);
-    for (const id of ids) {
-      const s = p.sessions.find((x) => x.id === id)!;
-      expect(s.topics.some((t) => t === 'haptics' || t === 'vr')).toBe(true);
-    }
+  it('shows demo people at the sessions they saved', () => {
+    const mina: Connection = { ...real('Mina', false), id: 'demo-mina', demo: true, sharedSessionIds: ['t-3'] };
+    expect(alsoGoing('t-3', [mina]).map((c) => c.profile.displayName)).toEqual(['Mina']);
   });
 
   it('lists names naturally', () => {

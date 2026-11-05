@@ -8,6 +8,7 @@ import { alsoGoing, namesList } from '../schedule/overlap';
 import type { Connection } from '../model/types';
 import { announce } from '../ui/announce';
 import { useScreenHeading } from '../ui/useScreenHeading';
+import { savedId } from '../schedule/starter';
 import { ProgrammeNote } from './ProgrammeNote';
 
 interface Props {
@@ -60,7 +61,7 @@ export function AddSessionsScreen({ programme, initialDay, onDone }: Props) {
       announce(`Removed ${s.title}.`);
     } else {
       await putScheduleItem({
-        id: `saved-${s.id}`, // one per programme session: saving it again overwrites, never duplicates
+        id: savedId(s.id), // one per programme session: saving it again overwrites, never duplicates
         type: 'session',
         source: 'user',
         programmeSessionId: s.id,
@@ -123,7 +124,7 @@ export function AddSessionsScreen({ programme, initialDay, onDone }: Props) {
                   </p>
                   {clash && <p class="hint">Overlaps {clash.title}.</p>}
                   {(() => {
-                    const going = alsoGoing(s.id, people, programme);
+                    const going = alsoGoing(s.id, people);
                     return going.length ? <p class="also-going">Going: {namesList(going)}</p> : null;
                   })()}
                 </div>

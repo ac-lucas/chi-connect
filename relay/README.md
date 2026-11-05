@@ -4,7 +4,7 @@ A small message relay so two phones can reach each other when they are not side 
 
 | What | Contents | How long |
 | --- | --- | --- |
-| Mailbox | random 128-bit ID, SHA-256 hash of the owner's read token, last-used time | deleted after 45 days unused |
+| Mailbox | 128-bit ID (made from the owner's secret token, which the relay never stores), last-used time (refreshed at most daily) | deleted after 45 days unused |
 | Message | mailbox ID, opaque ciphertext (encrypted on the phone), created and expiry times | until read and acknowledged, at most 24 hours |
 | Pairing code | six-digit code, opaque ciphertext (emptied when redeemed; the code stays reserved) | at most 2 minutes |
 

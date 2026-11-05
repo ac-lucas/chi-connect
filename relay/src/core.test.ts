@@ -81,12 +81,14 @@ describe('mailboxes and messages', () => {
     expect(errorOf(await call('/v1/mailboxes/claim', { id: id('r'), token }))).toBe('taken');
   });
 
-  it('keeps working for mailboxes claimed before IDs were made from tokens', async () => {
-    const token = id('t');
-    const hash = Buffer.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token)))).toString('base64url');
-    sql.run('INSERT INTO mailboxes (id, token_hash, last_used) VALUES (?, ?, ?)', id('o'), hash, NOW);
-    expect((await call('/v1/mailboxes/claim', { id: id('o'), token })).status).toBe(200);
-    expect(errorOf(await call('/v1/mailboxes/claim', { id: id('o'), token: id('x') }))).toBe('taken');
+  it('only writes "last used" about once a day, not on every check', async () => {
+    const { box, token } = await owned('t');
+    await call('/v1/inbox', { boxes: [{ id: box, token }] }, NOW);
+    const lastUsed = () => sql.all<{ last_used: number }>('SELECT last_used FROM mailboxes WHERE id = ?', box)[0]!.last_used;
+    await call('/v1/inbox', { boxes: [{ id: box, token }] }, NOW + 60_000);
+    expect(lastUsed()).toBe(NOW); // checked again a minute later: no write
+    await call('/v1/inbox', { boxes: [{ id: box, token }] }, NOW + 25 * 3_600_000);
+    expect(lastUsed()).toBe(NOW + 25 * 3_600_000); // a day on: refreshed
   });
 
   it('only takes mail for a mailbox someone has claimed (first read claims it)', async () => {

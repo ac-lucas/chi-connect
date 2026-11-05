@@ -174,7 +174,6 @@ export type PairMessage =
   | { t: 'invite'; v: 1; invite: WireInvite }
   | { t: 'yes'; v: 1; id: string }
   | { t: 'cancel'; v: 1; id: string }
-  | { t: 'update'; v: 1; id: string; place?: string; spot?: MeetingSpot }
   /** F14: the programme session IDs someone saved, sent only if they chose to share with this person. Empty = stopped sharing. */
   | { t: 'sessions'; v: 1; ids: string[] };
 
@@ -204,10 +203,6 @@ function parsePairMessage(value: unknown): PairMessage | null {
   if (msg.t === 'sessions' && Array.isArray(msg.ids) && msg.ids.length <= MAX_SHARED_SESSIONS) {
     const ids = [...new Set(msg.ids.filter((x): x is string => typeof x === 'string' && SESSION_ID.test(x)))];
     return { t: 'sessions', v: 1, ids };
-  }
-  if (msg.t === 'update' && typeof msg.id === 'string' && ID.test(msg.id)) {
-    const place = cleanText(msg.place, LIMITS_INVITE.place) || undefined;
-    return { t: 'update', v: 1, id: msg.id, place, spot: cleanSpot(msg.spot) };
   }
   return null;
 }

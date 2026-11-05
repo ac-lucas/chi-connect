@@ -125,6 +125,10 @@ export interface ScheduleItem {
   focus?: boolean;
   /** Added from a wildcard suggestion (F15), for the recap. */
   fromWildcard?: boolean;
+  /** Part of the ready-made sample day (src/schedule/starter.ts). Labelled Sample wherever it shows. */
+  starter?: boolean;
+  /** Came from an imported calendar file. */
+  imported?: boolean;
 }
 
 export type InviteKind =

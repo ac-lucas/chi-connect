@@ -11,6 +11,7 @@ import { cleanText, cleanUrl, graphemes, LIMITS } from '../model/text';
 import type { SharedProfile, Tag } from '../model/types';
 import { fromBase64Url, toBase64Url } from './base64url';
 import { importPublicKey, isPublicKeyText } from './pairing';
+import { readCapped } from '../util/stream';
 
 /** v2 added the ECDH public key (k). v1 codes, from before that, are refused with 'older-version'. */
 export const PAYLOAD_VERSION = 2;
@@ -96,38 +97,16 @@ export function canCompress(): boolean {
   return compressOk;
 }
 
-async function readCapped(stream: ReadableStream<Uint8Array>, max: number): Promise<Uint8Array> {
-  const reader = stream.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > max) {
-      await reader.cancel();
-      throw new DecodeError('too-long');
-    }
-    chunks.push(value);
-  }
-  const out = new Uint8Array(total);
-  let at = 0;
-  for (const c of chunks) {
-    out.set(c, at);
-    at += c.byteLength;
-  }
-  return out;
-}
-
+const tooLong = () => new DecodeError('too-long');
 const streamOf = (bytes: Uint8Array) => new Blob([bytes as BlobPart]).stream();
 
 async function deflate(bytes: Uint8Array, native = canCompress()): Promise<Uint8Array> {
   if (!native) return (await import('fflate')).deflateSync(bytes, { level: 9 });
-  return readCapped(streamOf(bytes).pipeThrough(new CompressionStream('deflate-raw')), MAX_JSON_BYTES);
+  return readCapped(streamOf(bytes).pipeThrough(new CompressionStream('deflate-raw')), MAX_JSON_BYTES, tooLong);
 }
 
 async function inflate(bytes: Uint8Array, native = canCompress()): Promise<Uint8Array> {
-  if (native) return readCapped(streamOf(bytes).pipeThrough(new DecompressionStream('deflate-raw')), MAX_JSON_BYTES);
+  if (native) return readCapped(streamOf(bytes).pipeThrough(new DecompressionStream('deflate-raw')), MAX_JSON_BYTES, tooLong);
   // Same cap as the native path: stop as soon as the output passes MAX_JSON_BYTES (compression bombs).
   const { Inflate } = await import('fflate');
   const chunks: Uint8Array[] = [];

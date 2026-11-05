@@ -1,15 +1,8 @@
 import { dayLabel } from '../programme/programme';
 import type { Programme } from '../programme/types';
 
-/** Where the sessions come from: sample, preview with moved dates, or live. Always with the licence credit for real data. */
+/** Where the sessions come from: a preview with moved dates, or live. Always with the licence credit for real data. */
 export function ProgrammeNote({ programme }: { programme: Programme }) {
-  if (programme.sample) {
-    return (
-      <p class="hint">
-        <span class="badge">Sample</span> Made-up sessions so you can try things out. The real programme replaces these.
-      </p>
-    );
-  }
   return (
     <div class="hint stack-tight">
       {programme.shiftedFrom !== undefined && (

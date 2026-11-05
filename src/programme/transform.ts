@@ -193,7 +193,6 @@ export function transformFeed(raw: unknown, edition: string, revision: number): 
   sessions.sort((a, b) => a.start - b.start || a.title.localeCompare(b.title));
   return {
     name: year ? name : 'Programme',
-    sample: false,
     sessions,
     edition,
     revision,

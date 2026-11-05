@@ -139,6 +139,9 @@ export class RateLimiter {
   }
 }
 
+/** Refresh a mailbox's "last used" time at most this often (it's only for the 45-day idle clean-up). */
+const TOUCH_EVERY_MS = 24 * 60 * 60 * 1000;
+
 const ok = (body: unknown = { ok: true }, status = 200): RelayResponse => ({ status, body });
 const fail = (status: number, error: string): RelayResponse => ({ status, body: { error } });
 
@@ -156,9 +159,6 @@ async function sha256(s: string): Promise<Uint8Array> {
   return new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)));
 }
 
-async function sha256b64url(s: string): Promise<string> {
-  return b64url(await sha256(s));
-}
 
 /**
  * A mailbox ID is made from its owner's token, so only the token holder can claim it. Mailbox IDs travel
@@ -217,7 +217,6 @@ export class RelayCore {
   async handle(req: RelayRequest, now = Date.now()): Promise<RelayResponse> {
     if (!this.limiter.hit(req.clientKey, 'any', now)) return fail(429, 'slow-down');
     if (req.method !== 'POST') return fail(405, 'method');
-    if (Math.random() < 0.02) this.purge(now);
 
     const p = req.path;
     if (p === '/v1/mailboxes/claim') return this.claim(req, now);
@@ -231,20 +230,18 @@ export class RelayCore {
   }
 
   /**
-   * Returns true if the token owns the mailbox. A mailbox whose ID is made from the token is claimed on
-   * first use. Older mailboxes (random IDs, claimed before IDs were made from tokens) still work for the
-   * token that claimed them, but an unclaimed random ID can no longer be claimed by anyone.
+   * Returns true if the token owns the mailbox: a mailbox ID is made from its token, so this is a hash, not a
+   * lookup. The mailbox row (which marks it as able to take mail) is created on first use, and its "last used"
+   * time refreshed at most once a day, so the read path almost never writes.
    */
   private async owns(id: string, token: string, now: number): Promise<boolean> {
-    const hash = await sha256b64url(token);
-    const row = this.sql.all<{ token_hash: string }>('SELECT token_hash FROM mailboxes WHERE id = ?', id)[0];
-    if (row) {
-      if (row.token_hash !== hash) return false;
-      this.sql.run('UPDATE mailboxes SET last_used = ? WHERE id = ?', now, id);
-      return true;
-    }
     if ((await mailboxIdFor(token)) !== id) return false;
-    this.sql.run('INSERT INTO mailboxes (id, token_hash, last_used) VALUES (?, ?, ?)', id, hash, now);
+    this.sql.run(
+      'INSERT INTO mailboxes (id, token_hash, last_used) VALUES (?, \'\', ?) ON CONFLICT(id) DO UPDATE SET last_used = excluded.last_used WHERE mailboxes.last_used < ?',
+      id,
+      now,
+      now - TOUCH_EVERY_MS,
+    );
     return true;
   }
 
@@ -333,9 +330,8 @@ export class RelayCore {
     if (boxes.some((b) => !Array.isArray(b.messageIds) || b.messageIds.length > LIMITS.idsPerAck)) return fail(400, 'bad-request');
     for (const { id, token, messageIds } of boxes) {
       if (!(await this.owns(id, token, now))) continue;
-      for (const mid of messageIds as unknown[]) {
-        if (typeof mid === 'string' && ID.test(mid)) this.sql.run('DELETE FROM messages WHERE id = ? AND mailbox = ?', mid, id);
-      }
+      const ids = (messageIds as unknown[]).filter((m): m is string => typeof m === 'string' && ID.test(m));
+      if (ids.length) this.sql.run(`DELETE FROM messages WHERE mailbox = ? AND id IN (${ids.map(() => '?').join(',')})`, id, ...ids);
     }
     return ok();
   }

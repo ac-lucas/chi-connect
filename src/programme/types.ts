@@ -19,8 +19,6 @@ export interface ProgrammeSession {
 
 export interface Programme {
   name: string;
-  /** True for the made-up sample programme. Shown as such wherever it appears. */
-  sample: boolean;
   sessions: ProgrammeSession[];
   /** Set when the days were moved to start today for a preview (the original first day, local midnight). */
   shiftedFrom?: number;

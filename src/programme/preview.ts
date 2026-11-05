@@ -12,13 +12,24 @@ interface Wall {
   min: number;
 }
 
+/** One formatter per time zone: creating them is the slow part (one per session made previews take ~0.3 s on phones). */
+const formatters = new Map<string, Intl.DateTimeFormat>();
+function formatterFor(timeZone: string): Intl.DateTimeFormat {
+  let f = formatters.get(timeZone);
+  if (!f) {
+    f = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', hourCycle: 'h23' });
+    formatters.set(timeZone, f);
+  }
+  return f;
+}
+
 function wallClock(ts: number, timeZone?: string): Wall {
   if (!timeZone) {
     const d = new Date(ts);
     return { y: d.getFullYear(), m: d.getMonth(), d: d.getDate(), h: d.getHours(), min: d.getMinutes() };
   }
   const parts = Object.fromEntries(
-    new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', hourCycle: 'h23' })
+    formatterFor(timeZone)
       .formatToParts(new Date(ts))
       .map((p) => [p.type, p.value]),
   );

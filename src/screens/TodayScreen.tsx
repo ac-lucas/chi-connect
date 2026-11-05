@@ -5,7 +5,7 @@ import type { Programme } from '../programme/types';
 import { planDay, type Busy, type HeadsUp, type PlannedBreak } from '../schedule/breaks';
 import { ENERGY, ENERGY_ORDER, energyToday } from '../schedule/energy';
 import { deleteScheduleItem, dismiss, getSetting, listAllSchedule, listConnections, listInvites, putScheduleItem, setSetting, skipBreak } from '../storage/db';
-import { cancelInvite, declineInvite, inviteTitle, KIND_INFO, pendingIncoming } from '../schedule/invites';
+import { cancelInvite, declineInvite, INVITES_CHANGED, inviteTitle, KIND_INFO, pendingIncoming } from '../schedule/invites';
 import type { Transport } from '../relay/transport';
 import { MeetupShapeView, ShapeBadge } from './ShapeCard';
 import { describeSpot } from '../schedule/spot';
@@ -53,7 +53,7 @@ type Row =
 export function TodayScreen({ name, programme, relay, myTopics, syncTick, onAddSessions, onInvite }: Props) {
   const heading = useScreenHeading<HTMLHeadingElement>();
   const now = Date.now();
-  const days = programmeDays(programme);
+  const days = useMemo(() => programmeDays(programme), [programme]);
   const today = startOfDay(now);
   const [day, setDay] = useState(days.includes(today) ? today : (days[0] ?? today));
   useEffect(() => {
@@ -109,24 +109,35 @@ export function TodayScreen({ name, programme, relay, myTopics, syncTick, onAddS
   }, []);
 
   const refresh = async () => {
-    setItems(await listAllSchedule());
-    setEnergySetting(await getSetting('energy'));
-    setSkipped((await getSetting('skippedBreaks')) ?? []);
-    setIncoming(await pendingIncoming());
-    setInvites(await listInvites());
-    setConnections(await listConnections());
-    setHiddenPrompts(((await getSetting('dismissed')) ?? []).filter((k) => k.startsWith('shapeprompt:')));
+    // Tidy invites first (it can delete some), then read everything at once and update together, so the screen
+    // renders once instead of once per read.
+    const incomingNow = await pendingIncoming();
+    const [all, energy, skippedBreaks, invitesNow, conns, dismissedNow] = await Promise.all([
+      listAllSchedule(),
+      getSetting('energy'),
+      getSetting('skippedBreaks'),
+      listInvites(),
+      listConnections(),
+      getSetting('dismissed'),
+    ]);
+    setItems(all);
+    setEnergySetting(energy);
+    setSkipped(skippedBreaks ?? []);
+    setIncoming(incomingNow);
+    setInvites(invitesNow);
+    setConnections(conns);
+    setHiddenPrompts((dismissedNow ?? []).filter((k) => k.startsWith('shapeprompt:')));
   };
   // Reload when the programme changes (for example the real feed replacing the sample).
   useEffect(() => {
     void refresh();
   }, [programme, syncTick]);
-  // Simulated replies from demo people arrive a few seconds after sending: look again shortly.
+  // Simulated replies from demo people arrive a few seconds after sending: reload when one lands (no polling).
   useEffect(() => {
-    if (!invites.some((i) => i.outgoing && i.status === 'pending' && i.recipientIds.length > i.acceptedIds.length)) return;
-    const t = setTimeout(() => void refresh(), 3000);
-    return () => clearTimeout(t);
-  }, [invites]);
+    const onChange = () => void refresh();
+    window.addEventListener(INVITES_CHANGED, onChange);
+    return () => window.removeEventListener(INVITES_CHANGED, onChange);
+  }, []);
 
   const { level, setToday } = energyToday(energySetting, now);
   const dayItems = items.filter((i) => i.start >= day && i.start < nextDay(day));
@@ -381,6 +392,7 @@ export function TodayScreen({ name, programme, relay, myTopics, syncTick, onAddS
                   <p class="day-title">
                     {r.kind === 'invite' && r.invite ? inviteTitle(r.invite, r.invite.acceptedIds.map(nameOf)) : title(r)}
                     {r.kind === 'invite' && r.invite?.simulated && <span class="badge"><span class="visually-hidden">, </span>Simulated</span>}
+                    {r.kind === 'session' && r.item.starter && <span class="badge"><span class="visually-hidden">, </span>Sample</span>}
                   </p>
                   {r.kind === 'invite' && r.invite?.outgoing && (
                     <p class="muted">
@@ -398,7 +410,7 @@ export function TodayScreen({ name, programme, relay, myTopics, syncTick, onAddS
                   {r.kind === 'session' && r.item.place && <p class="muted">{r.item.place}</p>}
                   {r.kind === 'session' &&
                     (() => {
-                      const going = alsoGoing(r.item.programmeSessionId, connections, programme);
+                      const going = alsoGoing(r.item.programmeSessionId, connections);
                       if (!going.length) return null;
                       return (
                         <p class="also-going">
@@ -514,7 +526,7 @@ export function TodayScreen({ name, programme, relay, myTopics, syncTick, onAddS
         />
       )}
 
-      {!programme.sample && <ProgrammeNote programme={programme} />}
+      <ProgrammeNote programme={programme} />
 
       {shapeFor && <MeetupShapeView inviteId={shapeFor.id} context={shapeFor.context} onClose={() => setShapeFor(null)} />}
 

@@ -5,7 +5,7 @@ import type { Connection, Invite, InviteKind, MeetingSpot, ScheduleItem } from '
 import type { WireInvite } from '../relay/invites';
 import { sendPairMessage, type PairMessage } from '../relay/protocol';
 import type { Transport } from '../relay/transport';
-import { deleteInvite, deleteScheduleItem, getConnection, getInvite, listInvites, putInvite, putScheduleItem, scheduleItemForInvite } from '../storage/db';
+import { deleteInvite, deleteScheduleItem, getConnection, getInvite, listInvites, putInvite, putScheduleItem } from '../storage/db';
 
 export const KIND_INFO: Record<InviteKind, { label: string; glyph: string; line: (i: { sessionTitle?: string; place?: string }) => string }> = {
   meal: { label: 'Lunch', glyph: '◒', line: (i) => (i.place ? `Lunch at ${i.place}.` : 'Lunch together.') },
@@ -125,7 +125,12 @@ async function simulatedYes(inviteId: string, who: Connection) {
   const inv = await getInvite(inviteId);
   if (!inv || inv.status === 'cancelled' || inv.acceptedIds.includes(who.id)) return;
   await putInvite({ ...inv, acceptedIds: [...inv.acceptedIds, who.id], simulated: true });
+  // Tell open screens to look again (instead of them polling for the reply).
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(INVITES_CHANGED));
 }
+
+/** Fired on window when an invite changes outside a screen's own actions (a simulated reply). */
+export const INVITES_CHANGED = 'pebble:invites-changed';
 
 function scheduleFor(i: Invite, title?: string): ScheduleItem {
   return {
@@ -180,19 +185,10 @@ export async function handleInviteMessage(c: Connection, msg: Exclude<PairMessag
     await putInvite({ ...inv, acceptedIds: [...inv.acceptedIds, c.id] });
     return 'changed';
   }
-  // Cancel and update only count from the person who sent the invite.
-  if (inv.outgoing || inv.fromConnectionId !== c.id) return null;
-  if (inv.status === 'declined') return null; // a tombstone keeps no details: an update must not put them back
-  if (msg.t === 'cancel') {
-    await putInvite({ ...inv, status: 'cancelled' });
-    const item = await scheduleItemForInvite(inv.id);
-    if (item) await deleteScheduleItem(item.id);
-    return 'changed';
-  }
-  const next = { ...inv, place: msg.place ?? inv.place, meetingSpot: msg.spot ?? inv.meetingSpot };
-  await putInvite(next);
-  const item = await scheduleItemForInvite(inv.id);
-  if (item) await putScheduleItem({ ...item, place: next.place });
+  // Cancel only counts from the person who sent the invite (and a declined tombstone stays as it is).
+  if (inv.outgoing || inv.fromConnectionId !== c.id || inv.status === 'declined') return null;
+  await putInvite({ ...inv, status: 'cancelled' });
+  await deleteScheduleItem(`inv-${inv.id}`);
   return 'changed';
 }
 
@@ -242,8 +238,7 @@ export async function cancelInvite(relay: Transport | null, inv: Invite): Promis
     }
   }
   await putInvite({ ...inv, status: 'cancelled' });
-  const item = await scheduleItemForInvite(inv.id);
-  if (item) await deleteScheduleItem(item.id);
+  await deleteScheduleItem(`inv-${inv.id}`); // its day entry always has this key
   return { told, missed };
 }
 
