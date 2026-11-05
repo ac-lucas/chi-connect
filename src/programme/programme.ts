@@ -65,15 +65,19 @@ export function overlaps(a: { start: number; end: number }, b: { start: number; 
   return a.start < b.end && b.start < a.end;
 }
 
+/** One shared formatter: building one per call is the slow part when a screen shows dozens of times. */
+const CLOCK = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
+
+/** A time of day in the device's style ("10:30 AM" or "10:30"). */
+export const clockTime = (t: number): string => CLOCK.format(t);
+
 export function timeRange(start: number, end: number): string {
-  const f = (t: number) => new Date(t).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-  return `${f(start)} – ${f(end)}`;
+  return `${clockTime(start)} – ${clockTime(end)}`;
 }
 
 /** Spoken form for screen readers ("10:30 AM to 12:00 PM"), since "–" is not always read as "to". */
 export function timeRangeSpoken(start: number, end: number): string {
-  const f = (t: number) => new Date(t).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-  return `${f(start)} to ${f(end)}`;
+  return `${clockTime(start)} to ${clockTime(end)}`;
 }
 
 export function dayLabel(day: number, style: 'short' | 'long' = 'short'): string {

@@ -21,10 +21,9 @@ interface Props {
   programme: Programme | null;
   onBack: () => void;
   onRemoved: () => void;
-  onChanged: () => void;
 }
 
-export function PersonScreen({ connection: c, myTags, justConnected, relay, programme, onBack, onRemoved, onChanged }: Props) {
+export function PersonScreen({ connection: c, myTags, justConnected, relay, programme, onBack, onRemoved }: Props) {
   const heading = useScreenHeading<HTMLHeadingElement>();
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -38,7 +37,6 @@ export function PersonScreen({ connection: c, myTags, justConnected, relay, prog
 
   async function toggleSharing(on: boolean) {
     await updateConnection(c.id, { scheduleSharing: on }); // never write the screen's (possibly stale) copy back
-    onChanged();
     announce(on ? `${name} can now see which sessions you’ve saved.` : `Stopped sharing your sessions with ${name}.`);
     if (relay && !c.demo) void shareSessionsIfChanged(relay).catch(() => {});
   }
@@ -68,7 +66,6 @@ export function PersonScreen({ connection: c, myTags, justConnected, relay, prog
       const done = await approveRequest(relay, c);
       await updateConnection(c.id, { state: done.state, connectedAt: done.connectedAt, myMailboxId: done.myMailboxId, myMailboxToken: done.myMailboxToken });
       announce(`You’re connected with ${name}.`);
-      onChanged();
     } catch (e) {
       const msg = e instanceof RelayError && e.problem === 'offline' ? 'You seem to be offline. Try again when you have a connection.' : 'That didn’t go through. Try again in a moment.';
       setProblem(msg); // shown in a role=alert, which is read out: don't announce it twice

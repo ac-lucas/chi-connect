@@ -1,6 +1,7 @@
 // On-device storage (IndexedDB via idb). Nothing in here is sent anywhere.
 import { deleteDB, openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import { importPrivateJwk } from '../connect/pairing';
+import { ALL_STORES, changed } from './changes';
 // Bundled, not loaded on demand: a separately loaded file can go missing right after an update.
 import { DEMO_CONNECTIONS, DEMO_NOTES } from '../data/demo';
 import type { CatchUpItem, Connection, EnergySetting, FollowUp, Intro, Invite, Note, Profile, ScheduleItem } from '../model/types';
@@ -101,6 +102,7 @@ export async function getProfile(): Promise<Profile | null> {
 }
 export async function saveProfile(p: Profile): Promise<void> {
   await (await db()).put('profile', p, 'me');
+  changed('profile');
 }
 
 // Settings
@@ -109,6 +111,7 @@ export async function getSetting<K extends keyof Settings>(key: K): Promise<Sett
 }
 export async function setSetting<K extends keyof Settings>(key: K, value: Settings[K]): Promise<void> {
   await (await db()).put('settings', value, key);
+  changed('settings');
 }
 
 // Connections
@@ -120,6 +123,7 @@ export async function getConnection(id: string): Promise<Connection | null> {
 }
 export async function putConnection(c: Connection): Promise<void> {
   await (await db()).put('connections', c);
+  changed('connections');
 }
 /**
  * Change some fields of a connection, reading the current record inside the same transaction. Use this rather
@@ -135,6 +139,7 @@ export async function updateConnection(id: string, patch: Partial<Connection> | 
   const next = { ...current, ...(typeof patch === 'function' ? patch(current) : patch), id };
   await tx.store.put(next);
   await tx.done;
+  changed('connections');
   return next;
 }
 
@@ -164,6 +169,7 @@ export async function removeConnection(id: string): Promise<void> {
     }
   }
   await tx.done;
+  changed('connections', 'notes', 'followUps', 'invites', 'schedule');
 }
 
 // Notes
@@ -172,6 +178,7 @@ export async function listNotes(connectionId: string): Promise<Note[]> {
 }
 export async function putNote(n: Note): Promise<void> {
   await (await db()).put('notes', n);
+  changed('notes');
 }
 
 export async function listAllNotes(): Promise<Note[]> {
@@ -179,6 +186,7 @@ export async function listAllNotes(): Promise<Note[]> {
 }
 export async function deleteNote(id: string): Promise<void> {
   await (await db()).delete('notes', id);
+  changed('notes');
 }
 
 // Follow-ups (F09)
@@ -189,9 +197,11 @@ export async function listFollowUps(connectionId?: string): Promise<FollowUp[]> 
 }
 export async function putFollowUp(f: FollowUp): Promise<void> {
   await (await db()).put('followUps', f);
+  changed('followUps');
 }
 export async function deleteFollowUp(id: string): Promise<void> {
   await (await db()).delete('followUps', id);
+  changed('followUps');
 }
 
 // Schedule
@@ -200,9 +210,11 @@ export async function listSchedule(from: number, to: number): Promise<ScheduleIt
 }
 export async function putScheduleItem(item: ScheduleItem): Promise<void> {
   await (await db()).put('schedule', item);
+  changed('schedule');
 }
 export async function deleteScheduleItem(id: string): Promise<void> {
   await (await db()).delete('schedule', id);
+  changed('schedule');
 }
 
 // One-way codes we've shown
@@ -277,6 +289,7 @@ export async function seedDemoScheduleOnce(items: ScheduleItem[]): Promise<boole
   for (const item of items) await tx.objectStore('schedule').put(item);
   await tx.objectStore('settings').put(true, 'demoScheduleSeeded');
   await tx.done;
+  changed('schedule', 'settings');
   return true;
 }
 
@@ -288,6 +301,7 @@ export async function seedDemoOnce(now = Date.now()): Promise<void> {
   for (const n of DEMO_NOTES) await tx.objectStore('notes').put({ ...n, createdAt: now });
   await tx.objectStore('settings').put(true, 'demoSeeded');
   await tx.done;
+  changed('connections', 'notes', 'settings');
 }
 
 // Catch up later (F23)
@@ -296,9 +310,11 @@ export async function listCatchUp(): Promise<CatchUpItem[]> {
 }
 export async function putCatchUp(c: CatchUpItem): Promise<void> {
   await (await db()).put('catchUp', c);
+  changed('catchUp');
 }
 export async function deleteCatchUp(programmeSessionId: string): Promise<void> {
   await (await db()).delete('catchUp', programmeSessionId);
+  changed('catchUp');
 }
 
 /** Read and change one setting inside a single transaction, so two quick changes can't lose one of them. */
@@ -308,6 +324,7 @@ async function updateSetting<K extends keyof Settings>(key: K, fn: (current: Set
   const next = fn(current);
   if (next !== current) await tx.store.put(next, key); // returning the same value means "no change": no write
   await tx.done;
+  if (next !== current) changed('settings');
 }
 
 /** Remember a dismissed suggestion. */
@@ -324,9 +341,11 @@ export async function getInvite(id: string): Promise<Invite | null> {
 }
 export async function putInvite(i: Invite): Promise<void> {
   await (await db()).put('invites', i);
+  changed('invites');
 }
 export async function deleteInvite(id: string): Promise<void> {
   await (await db()).delete('invites', id);
+  changed('invites');
 }
 /** The schedule entry for an invite we sent or accepted, if any. */
 /** The day a preview programme starts on (its first day is moved here). */
@@ -351,18 +370,19 @@ export async function listAllSchedule(): Promise<ScheduleItem[]> {
 export async function syncSavedSessions(sessions: { id: string; start: number; end: number; title: string; room?: string }[]): Promise<number> {
   const byId = new Map(sessions.map((s) => [s.id, s]));
   const tx = (await db()).transaction('schedule', 'readwrite');
-  let changed = 0;
+  let n = 0;
   for (const item of await tx.store.getAll()) {
     if (item.type !== 'session' || !item.programmeSessionId) continue;
     const s = byId.get(item.programmeSessionId);
     if (!s) continue;
     if (s.start !== item.start || s.end !== item.end || s.title !== item.title || s.room !== item.place) {
       await tx.store.put({ ...item, start: s.start, end: s.end, title: s.title, place: s.room });
-      changed++;
+      n++;
     }
   }
   await tx.done;
-  return changed;
+  if (n) changed('schedule');
+  return n;
 }
 
 /** Remove sessions saved from a programme that has been replaced by another edition (their IDs mean nothing now). */
@@ -376,6 +396,7 @@ export async function removeProgrammeSessions(): Promise<number> {
     }
   }
   await tx.done;
+  if (n) changed('schedule');
   return n;
 }
 
@@ -414,6 +435,7 @@ export async function wipeEverything(): Promise<void> {
     wiping = false; // didn't work: let the app carry on
     throw e;
   });
+  changed(...ALL_STORES);
   try {
     sessionStorage.clear();
   } catch {

@@ -241,6 +241,9 @@ export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
           {problem}
         </p>
       )}
+      {tooLate && !problem && (
+        <p class="error">That’s just about over, so there’s no time left to meet. Pick a later break or session.</p>
+      )}
 
       <div class="actions">
         <button type="submit" class="button" disabled={sending || people.length === 0 || tooLate}>

@@ -124,13 +124,8 @@ export async function deliverInvite(
 async function simulatedYes(inviteId: string, who: Connection) {
   const inv = await getInvite(inviteId);
   if (!inv || inv.status === 'cancelled' || inv.acceptedIds.includes(who.id)) return;
-  await putInvite({ ...inv, acceptedIds: [...inv.acceptedIds, who.id], simulated: true });
-  // Tell open screens to look again (instead of them polling for the reply).
-  if (typeof window !== 'undefined') window.dispatchEvent(new Event(INVITES_CHANGED));
+  await putInvite({ ...inv, acceptedIds: [...inv.acceptedIds, who.id], simulated: true }); // open screens update by themselves
 }
-
-/** Fired on window when an invite changes outside a screen's own actions (a simulated reply). */
-export const INVITES_CHANGED = 'pebble:invites-changed';
 
 function scheduleFor(i: Invite, title?: string): ScheduleItem {
   return {

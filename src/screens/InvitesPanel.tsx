@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import type { Connection, Invite, ScheduleItem } from '../model/types';
-import { overlaps, timeRange, timeRangeSpoken } from '../programme/programme';
+import { overlaps, timeRange, timeRangeSpoken, clockTime } from '../programme/programme';
 import { describeSpot } from '../schedule/spot';
 import { acceptInvite, declineInvite, KIND_INFO, simulateIncoming } from '../schedule/invites';
 import type { Transport } from '../relay/transport';
@@ -18,13 +18,12 @@ interface Props {
   heldUntil: number | null;
   /** Where a simulated invite can go (the next suggested break today). */
   nextBreak: PlannedBreak | null;
-  onChanged: () => void;
 }
 
-const clock = (t: number) => new Date(t).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+const clock = clockTime;
 
 /** Incoming invites with Yes and Not now. Answering no tells nobody. */
-export function InvitesPanel({ invites, connections, items, relay, heldUntil, nextBreak, onChanged }: Props) {
+export function InvitesPanel({ invites, connections, items, relay, heldUntil, nextBreak }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const demo = connections.filter((c) => c.demo && c.state === 'connected');
@@ -43,7 +42,6 @@ export function InvitesPanel({ invites, connections, items, relay, heldUntil, ne
     try {
       await acceptInvite(relay, i);
       announce(`Added: ${KIND_INFO[i.kind].label} with ${i.senderName}, ${timeRangeSpoken(i.start, i.end)}${i.place ? `, ${i.place}` : ''}.`);
-      onChanged();
     } catch {
       const msg = 'That didn’t go through. You might be offline. Try again in a moment.';
       setProblem(msg); // shown in a role=alert, which is read out: don't announce it twice
@@ -55,7 +53,6 @@ export function InvitesPanel({ invites, connections, items, relay, heldUntil, ne
   async function no(i: Invite) {
     await declineInvite(i);
     announce('Removed. Nobody is told.');
-    onChanged();
   }
 
   async function simulate() {
@@ -71,7 +68,6 @@ export function InvitesPanel({ invites, connections, items, relay, heldUntil, ne
       spot: meal ? undefined : { side: 'left', byDoor: true },
     });
     announce(`Simulated invite from ${from.profile.displayName}.`);
-    onChanged();
   }
 
   return (

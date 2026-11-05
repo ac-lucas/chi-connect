@@ -4,7 +4,7 @@
 //  - keep the last programme on the device so the app works offline.
 // Only the newest edition is ever polled. Until it's published (April 2027), last year's programme is shown as a
 // preview; that edition is frozen, so it's fetched once and never asked about again.
-import { readTextCapped, timeoutSignal } from '../util/stream';
+import { readCapped, readTextCapped, timeoutSignal } from '../util/stream';
 import { transformFeed, type FeedProgramme } from './transform';
 
 export const FEED_BASE = 'https://chidigitalexperience.org/data';
@@ -28,6 +28,46 @@ type Fetch = typeof fetch;
 type Edition = { edition: string; revision: number };
 
 const readJson = async (res: Response, max: number): Promise<unknown> => JSON.parse(await readTextCapped(res, max));
+
+/** Read a response body as bytes, capped at `max` (checks Content-Length first). */
+async function readBytes(res: Response, max: number): Promise<Uint8Array> {
+  if (Number(res.headers.get('Content-Length') ?? '0') > max) throw new Error('too-large');
+  if (!res.body) return new Uint8Array(await res.arrayBuffer());
+  return readCapped(res.body, max);
+}
+
+const parseHere = (bytes: Uint8Array, edition: string, revision: number) =>
+  transformFeed(JSON.parse(new TextDecoder().decode(bytes)), edition, revision);
+
+/**
+ * Parse and transform the downloaded programme in a worker, so the 12 MB JSON doesn't freeze the screen. Where
+ * module workers aren't available or the worker fails to start (verify per browser), it runs here instead.
+ */
+async function parseProgramme(bytes: Uint8Array, edition: string, revision: number): Promise<FeedProgramme> {
+  if (typeof Worker === 'undefined') return parseHere(bytes, edition, revision);
+  let worker: Worker;
+  try {
+    worker = new Worker(new URL('./transform.worker.ts', import.meta.url), { type: 'module' });
+  } catch {
+    return parseHere(bytes, edition, revision);
+  }
+  return new Promise((resolve, reject) => {
+    worker.onmessage = (e: MessageEvent<{ ok: boolean; programme?: FeedProgramme }>) => {
+      worker.terminate();
+      if (e.data.ok && e.data.programme) resolve(e.data.programme);
+      else reject(new Error('not-a-programme'));
+    };
+    worker.onerror = () => {
+      worker.terminate();
+      try {
+        resolve(parseHere(bytes, edition, revision)); // the worker couldn't run: do it here
+      } catch (err) {
+        reject(err);
+      }
+    };
+    worker.postMessage({ bytes, edition, revision }); // copied, not transferred, so the fallback still has it
+  });
+}
 
 /** The revision file must be on the feed's own host, under that edition's revisions folder. */
 export function isRevisionUrl(url: unknown, edition: string, base = FEED_BASE): url is string {
@@ -76,7 +116,7 @@ async function download(edition: string, revision: number, url: unknown, fetchIm
   }
   if (!res.ok) return { programme: null, checked: true };
   try {
-    const programme = transformFeed(await readJson(res, MAX_FEED_BYTES), edition, revision);
+    const programme = await parseProgramme(await readBytes(res, MAX_FEED_BYTES), edition, revision);
     return programme.sessions.length ? { programme, checked: true } : { programme: null, checked: true, unusable: { edition, revision } };
   } catch {
     return { programme: null, checked: true, unusable: { edition, revision } }; // too big or not a programme

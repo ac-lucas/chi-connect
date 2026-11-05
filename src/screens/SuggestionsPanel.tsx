@@ -3,7 +3,7 @@ import { pickLine, talkOpeners } from '../data/icebreakers';
 import { knownTagById } from '../model/tags';
 import { randomId } from '../model/ids';
 import type { Connection, EnergyLevel, ScheduleItem } from '../model/types';
-import { atMinutes, dayKey, nextDay, timeRange, timeRangeSpoken } from '../programme/programme';
+import { atMinutes, dayKey, nextDay, timeRange, timeRangeSpoken, clockTime } from '../programme/programme';
 import type { Programme } from '../programme/types';
 import type { Busy } from '../schedule/breaks';
 import { alsoGoing, namesList } from '../schedule/overlap';
@@ -11,6 +11,7 @@ import { findClashes, freeGaps, inSomething, pickWildcard, recentlyEnded, topicL
 import { deleteScheduleItem, dismiss, getSetting, putCatchUp, putScheduleItem, setSetting } from '../storage/db';
 import { announce } from '../ui/announce';
 import { keepingFocus } from '../ui/focus';
+import { useLive } from '../ui/useLive';
 import type { InviteDraft } from './InviteScreen';
 
 interface Props {
@@ -21,38 +22,28 @@ interface Props {
   /** Midnight of the day being shown. */
   day: number;
   isToday: boolean;
+  /** The time now, from the screen's clock (the panel has no timer of its own). */
+  now: number;
   myTopics: string[];
   onInvite: (d: InviteDraft) => void;
-  onChanged: () => void;
 }
 
 const NUDGE_CAP: Record<EnergyLevel, number> = { steady: 2, 'up-for-it': 3, charged: 5 };
 const MIN = 60_000;
-const clock = (t: number) => new Date(t).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+const clock = clockTime;
 
 /**
  * Suggestions for the day: a clash to settle (F23), talk about the talk (F24) or a nudge with an icebreaker (F16, F17),
  * and a wildcard session (F15) when energy is Charged. Quiet mode, snooze and the daily cap (F18) apply to everything
  * except clashes, which are about your own plan. Nothing shows during a session or protected time.
  */
-export function SuggestionsPanel({ programme, items, connections, level, day, isToday, myTopics, onInvite, onChanged }: Props) {
-  const [dismissed, setDismissed] = useState<string[]>([]);
-  const [quiet, setQuiet] = useState(false);
-  const [snoozeUntil, setSnoozeUntil] = useState(0);
-  const [, tick] = useState(0);
+export function SuggestionsPanel({ programme, items, connections, level, day, isToday, now, myTopics, onInvite }: Props) {
+  const settings = useLive(
+    async () => ({ dismissed: (await getSetting('dismissed')) ?? [], quiet: !!(await getSetting('quietMode')), snoozeUntil: (await getSetting('snoozeUntil')) ?? 0 }),
+    ['settings'],
+  );
+  const { dismissed, quiet, snoozeUntil } = settings ?? { dismissed: [] as string[], quiet: false, snoozeUntil: 0 };
 
-  const load = async () => {
-    setDismissed((await getSetting('dismissed')) ?? []);
-    setQuiet(!!(await getSetting('quietMode')));
-    setSnoozeUntil((await getSetting('snoozeUntil')) ?? 0);
-  };
-  useEffect(() => {
-    void load();
-    const t = setInterval(() => tick((n) => n + 1), 60_000); // time moves on: re-check what fits
-    return () => clearInterval(t);
-  }, []);
-
-  const now = Date.now();
   const saved = items.filter((i) => i.type === 'session');
   const daySaved = saved.filter((i) => i.start >= day && i.start < nextDay(day));
   const quietNow = quiet || snoozeUntil > now || (isToday && inSomething(items, now));
@@ -60,7 +51,6 @@ export function SuggestionsPanel({ programme, items, connections, level, day, is
 
   async function hide(key: string, message?: string) {
     await dismiss(key);
-    await load();
     if (message) announce(message);
   }
 
@@ -71,7 +61,6 @@ export function SuggestionsPanel({ programme, items, connections, level, day, is
     await putCatchUp({ programmeSessionId: other.programmeSessionId ?? other.id, title: other.title, start: other.start, papers: s?.papers, reason: 'clash', addedAt: Date.now() });
     await deleteScheduleItem(other.id);
     announce(`Kept ${keepIt.title}. ${other.title} is in Catch up later${s?.papers?.length ? ', with its papers' : ''}.`);
-    onChanged();
   }
 
   // F24 / F16: a session just ended.
@@ -87,7 +76,7 @@ export function SuggestionsPanel({ programme, items, connections, level, day, is
   const showTalk = !!ended && going.length > 0 && !dismissed.includes(talkKey) && !quietNow && underCap;
   const showNudge = !!ended && going.length === 0 && !dismissed.includes(nudgeKey) && !quietNow && underCap;
   useEffect(() => {
-    if ((showTalk || showNudge) && seenKey && !dismissed.includes(seenKey)) void dismiss(seenKey).then(load); // counts towards the daily cap
+    if ((showTalk || showNudge) && seenKey && !dismissed.includes(seenKey)) void dismiss(seenKey); // counts towards the daily cap
   }, [showTalk, showNudge, seenKey]);
 
   // F15: wildcard, one a day, when Charged and there's a free gap.
@@ -110,12 +99,10 @@ export function SuggestionsPanel({ programme, items, connections, level, day, is
     const s = wildcard.session;
     await putScheduleItem({ id: randomId(), type: 'session', source: 'user', programmeSessionId: s.id, title: s.title, place: s.room, start: s.start, end: s.end, fromWildcard: true });
     announce(`Added ${s.title}. Enjoy the detour.`);
-    onChanged();
   }
 
   async function snooze() {
     await setSetting('snoozeUntil', Date.now() + 60 * MIN);
-    await load();
     announce('Snoozed for an hour.');
   }
 
