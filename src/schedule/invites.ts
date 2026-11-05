@@ -89,6 +89,25 @@ export async function sendInvite(
 }
 
 /**
+ * Invite more people to a meetup you already sent (same invite, same shape). Only new people are added and sent
+ * it. Returns who it didn't reach, like deliverInvite.
+ */
+export async function addPeopleToInvite(
+  relay: Transport | null,
+  inviteId: string,
+  people: Connection[],
+  onSimulatedYes: (who: Connection) => void,
+  now = Date.now(),
+): Promise<{ invite: Invite; failed: Connection[] } | null> {
+  const inv = await getInvite(inviteId);
+  if (!inv || !inv.outgoing || inv.status === 'cancelled') return null;
+  const fresh = people.filter((p) => !inv.recipientIds.includes(p.id));
+  const invite: Invite = { ...inv, recipientIds: [...inv.recipientIds, ...fresh.map((p) => p.id)] };
+  await putInvite(invite);
+  return { invite, failed: await deliverInvite(relay, invite, fresh, onSimulatedYes, now) };
+}
+
+/**
  * Send an invite that already exists to some of its recipients: the first time, or again to the ones it didn't
  * reach. Same invite ID every time, so a retry never makes a second invite. Returns who it still didn't reach.
  */

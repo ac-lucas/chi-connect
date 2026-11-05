@@ -15,10 +15,10 @@ interface Props {
 export function PeopleScreen({ connections, myTags, onConnect, onOpen, onShare, onEnterCode }: Props) {
   const heading = useScreenHeading<HTMLHeadingElement>();
   const newest = (a: Connection, b: Connection) => (b.connectedAt ?? b.requestedAt ?? 0) - (a.connectedAt ?? a.requestedAt ?? 0);
-  const real = connections.filter((c) => !c.demo && c.state === 'connected').sort(newest);
+  // Demo people sit in the same list as everyone else (no separate section or label).
+  const real = connections.filter((c) => c.state === 'connected').sort((a, b) => Number(a.demo) - Number(b.demo) || newest(a, b));
   const requests = connections.filter((c) => c.state === 'pending-received').sort(newest);
   const waiting = connections.filter((c) => c.state === 'pending-sent').sort(newest);
-  const demo = connections.filter((c) => c.demo);
 
   const row = (c: Connection) => {
     const shared = sharedTags(myTags, c.profile.tags ?? []);
@@ -28,7 +28,6 @@ export function PeopleScreen({ connections, myTags, onConnect, onOpen, onShare, 
         <button type="button" class="person-row" onClick={() => onOpen(c.id)}>
           <span class="person-name" dir="auto">
             {c.profile.displayName}
-            {c.demo && <span class="badge"><span class="visually-hidden">, </span>Demo</span>}
           </span>
           {line && <span class="muted">{line}</span>}
           <span class="person-shared">
@@ -90,12 +89,6 @@ export function PeopleScreen({ connections, myTags, onConnect, onOpen, onShare, 
         </section>
       )}
 
-      {demo.length > 0 && (
-        <section aria-labelledby="demo-people" class="stack">
-          <h3 id="demo-people">Demo people</h3>
-          <ul class="people">{demo.map(row)}</ul>
-        </section>
-      )}
     </section>
   );
 }

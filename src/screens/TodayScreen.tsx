@@ -2,7 +2,7 @@
 // Data comes from storage through a live query, so every change (here, from a sync, or another tab) shows up
 // without anyone calling refresh. The day's rows, actions and forms live in ./today/.
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import type { ScheduleItem } from '../model/types';
+import type { Invite, ScheduleItem } from '../model/types';
 import { clockTime as clock, dayLabel, nextDay, programmeDays, startOfDay, timeRangeSpoken } from '../programme/programme';
 import type { Programme } from '../programme/types';
 import { planDay, type Busy, type PlannedBreak } from '../schedule/breaks';
@@ -100,6 +100,13 @@ export function TodayScreen({ name, programme, relay, myTopics, onAddSessions, o
   function inviteFromSession(s: ScheduleItem, preselect?: string[]) {
     onInvite({ kinds: ['sit-together', 'arrive-together', 'walk-over'], start: s.start, end: s.end, sessionId: s.programmeSessionId, sessionTitle: s.title, room: s.place, preselect });
   }
+  // On a session with sitting together merged in: your own meetup gets more people (same invite, same shape);
+  // one you were invited to can't be changed by you, so that starts a new invite as usual.
+  function inviteMore(s: ScheduleItem, inv: Invite) {
+    if (!inv.outgoing) return inviteFromSession(s);
+    onInvite({ kinds: ['sit-together'], start: inv.start, end: inv.end, sessionId: s.programmeSessionId, sessionTitle: s.title, room: s.place, addTo: inv.id, already: inv.recipientIds });
+  }
+
   async function addProtected(kind: 'recharge' | 'off', from: number, minutes: number) {
     await putScheduleItem({
       id: `protect-${kind}-${from}`, // the same block twice (a double tap) overwrites instead of duplicating
@@ -249,6 +256,7 @@ export function TodayScreen({ name, programme, relay, myTopics, onAddSessions, o
                 relay={relay}
                 onInviteFromSession={inviteFromSession}
                 onInviteFromBreak={inviteFromBreak}
+                onInviteMore={inviteMore}
                 onShowShape={(id, context) => setShapeFor({ id, context })}
                 highlighted={!!highlight && meetupOf(r)?.invite?.id === highlight}
                 quiet={quiet}

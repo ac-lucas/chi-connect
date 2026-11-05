@@ -100,7 +100,6 @@ export function PersonScreen({ connection: c, myTags, justConnected, relay, prog
       <div>
         <h2 id="person-heading" ref={heading} tabIndex={-1}>
           {name}
-          {c.demo && <span class="badge"><span class="visually-hidden">, </span>Demo</span>}
         </h2>
         {c.state === 'pending-received' ? (
           <p class="lede">{name} would like to connect.</p>
@@ -109,7 +108,7 @@ export function PersonScreen({ connection: c, myTags, justConnected, relay, prog
         ) : justConnected ? (
           <p class="lede">You’re connected. Nice one.</p>
         ) : (
-          since && <p class="muted">{c.demo ? 'Demo connection' : `Connected ${since}${c.via === 'face-to-face' ? ', face to face' : ''}`}</p>
+          since && !c.demo && <p class="muted">{`Connected ${since}${c.via === 'face-to-face' ? ', face to face' : ''}`}</p>
         )}
       </div>
 
@@ -175,8 +174,7 @@ export function PersonScreen({ connection: c, myTags, justConnected, relay, prog
           {both.length > 0 && (
             <>
               <p>
-                You’re both going to {both.length === 1 ? 'this' : `these ${both.length}`}
-                {c.demo && <span class="badge"><span class="visually-hidden">, </span>Simulated</span>}:
+                You’re both going to {both.length === 1 ? 'this' : `these ${both.length}`}:
               </p>
               <ul class="both">
                 {both.slice(0, 8).map((s) => (

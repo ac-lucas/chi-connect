@@ -70,7 +70,6 @@ export function InvitesPanel({ invites, connections, items, relay, heldUntil, on
               <h4 id={`inv-${i.id}`} class="invite-title">
                 <span aria-hidden="true">{KIND_INFO[i.kind].glyph} </span>
                 {KIND_INFO[i.kind].label} with {i.senderName}
-                {i.simulated && <span class="badge"><span class="visually-hidden">, </span>Simulated</span>}
               </h4>
               <p class="day-time">
                 {/* Always say which day: an invite can be for a day other than the one you're looking at. */}
@@ -107,7 +106,7 @@ export function InvitesPanel({ invites, connections, items, relay, heldUntil, on
   );
 }
 
-/** A small, clearly labelled control so someone trying the app alone can receive an invite from a demo person. */
+/** A small control so someone trying the app alone can receive an invite from a demo person. */
 export function SimulateInvite({ connections, nextBreak }: { connections: Connection[]; nextBreak: PlannedBreak | null }) {
   const demo = connections.filter((c) => c.demo && c.state === 'connected');
   if (!demo.length) return null;
@@ -123,15 +122,12 @@ export function SimulateInvite({ connections, nextBreak }: { connections: Connec
       place: meal ? 'Lunch hall' : 'Courtyard benches',
       spot: meal ? undefined : { side: 'left', byDoor: true },
     });
-    announce(`Simulated invite from ${from.profile.displayName}. It’s at the top of Today.`);
+    announce(`${from.profile.displayName} sent you an invite. It’s at the top of Today.`);
   }
   return (
     <div class="actions">
       <button type="button" class="button quiet" onClick={() => void simulate()}>
         Simulate an invite
-        <span class="badge">
-          <span class="visually-hidden">, </span>Demo
-        </span>
       </button>
     </div>
   );

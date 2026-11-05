@@ -1,6 +1,6 @@
 // One row of the day plan with its actions. Changes are written to storage; the screen reloads by itself.
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { Connection, ScheduleItem } from '../../model/types';
+import type { Connection, Invite, ScheduleItem } from '../../model/types';
 import { clockTime as clock, timeRange, timeRangeSpoken } from '../../programme/programme';
 import type { PlannedBreak } from '../../schedule/breaks';
 import { cancelInvite, declineInvite, inviteTitle } from '../../schedule/invites';
@@ -21,6 +21,8 @@ interface Props {
   relay: Transport | null;
   onInviteFromSession: (s: ScheduleItem, preselect?: string[]) => void;
   onInviteFromBreak: (b: PlannedBreak) => void;
+  /** Invite more people to the meetup merged into a session (your own), or start one (theirs). */
+  onInviteMore: (session: ScheduleItem, invite: Invite) => void;
   onShowShape: (inviteId: string, context: string) => void;
   /** Just added (an invite you sent): marked for a moment. */
   highlighted?: boolean;
@@ -32,13 +34,6 @@ interface Props {
 
 /** Offer Invite only while there's enough of it left to meet (an invite starts at least 2 minutes out). */
 const MIN_INVITE_MS = 10 * 60_000;
-
-const badge = (label: string) => (
-  <span class="badge">
-    <span class="visually-hidden">, </span>
-    {label}
-  </span>
-);
 
 async function removeItem(item: ScheduleItem) {
   await deleteScheduleItem(item.id);
@@ -69,7 +64,7 @@ async function leaveOrCancel(r: InviteRow, relay: Transport | null) {
   }
 }
 
-export function DayRow({ r, now, connections, nameOf, relay, onInviteFromSession, onInviteFromBreak, onShowShape, highlighted, clashWith, quiet }: Props) {
+export function DayRow({ r, now, connections, nameOf, relay, onInviteFromSession, onInviteFromBreak, onInviteMore, onShowShape, highlighted, clashWith, quiet }: Props) {
   const going = r.kind === 'session' ? alsoGoing(r.item.programmeSessionId, connections) : [];
   const past = rowEnd(r) <= now;
   const canInvite = rowEnd(r) > now + MIN_INVITE_MS;
@@ -81,11 +76,14 @@ export function DayRow({ r, now, connections, nameOf, relay, onInviteFromSession
           merged && inv
             ? inv.outgoing
               ? inv.acceptedIds.length
-                ? `Sitting together with ${namesList(connections.filter((c) => inv.acceptedIds.includes(c.id)))}`
+                ? `Sitting with ${inv.acceptedIds.map(nameOf).join(', ')}`
                 : 'Sitting together'
-              : `Sitting together with ${inv.senderName}`
+              : `Sitting with ${inv.senderName}`
             : m.item.place,
-          inv?.outgoing
+          // Merged: only say who hasn't answered yet; the names already say who's coming.
+          merged && inv?.outgoing && inv.acceptedIds.length === inv.recipientIds.length
+            ? undefined
+            : inv?.outgoing
             ? inv.acceptedIds.length === 0
               ? `Invited ${inv.recipientIds.length}, no answers yet`
               : `${inv.acceptedIds.length} of ${inv.recipientIds.length} said yes`
@@ -111,20 +109,17 @@ export function DayRow({ r, now, connections, nameOf, relay, onInviteFromSession
         </p>
         <p class="day-title">
           {r.kind === 'invite' && r.invite ? inviteTitle(r.invite, r.invite.acceptedIds.map(nameOf)) : rowTitle(r)}
-          {r.kind === 'invite' && r.invite?.simulated && badge('Simulated')}
-          {r.kind === 'session' && r.item.starter && badge('Sample')}
         </p>
         {r.kind === 'session' && r.item.place && <p class="muted">{r.item.place}</p>}
         {meetupMeta && (
           <p class={merged ? 'also-going' : 'muted'}>
             {merged && <span aria-hidden="true">◆ </span>}
             {meetupMeta}
-            {merged && inv?.simulated && badge('Simulated')}
           </p>
         )}
         {m && isOnMeetup(m) && (
           <p class="shape-line">
-            Find each other by <ShapeBadge seedKey={inv!.id} />
+            Look for <ShapeBadge seedKey={inv!.id} />
           </p>
         )}
         {opener && (
@@ -149,7 +144,10 @@ export function DayRow({ r, now, connections, nameOf, relay, onInviteFromSession
         {r.kind === 'protected' && clashWith && <p class="hint">Heads-up: this is during {clashWith}.</p>}
       </div>
       <div class="day-actions">
-        {r.kind === 'session' && (
+        {r.kind === 'session' && merged && m && (
+          <MergedActions session={r.item} meetup={m} relay={relay} onShowShape={onShowShape} canInvite={canInvite} onInviteMore={onInviteMore} />
+        )}
+        {r.kind === 'session' && !merged && (
           <>
             {/* Stays in place once it's too late, just switched off, so the row doesn't change shape. */}
             <button
@@ -189,7 +187,7 @@ export function DayRow({ r, now, connections, nameOf, relay, onInviteFromSession
             )}
           </>
         )}
-        {m && <MeetupActions r={m} relay={relay} onShowShape={onShowShape} />}
+        {r.kind === 'invite' && m && <MeetupActions r={m} relay={relay} onShowShape={onShowShape} />}
       </div>
     </li>
   );
@@ -243,6 +241,93 @@ function MeetupActions({ r, relay, onShowShape }: { r: InviteRow; relay: Transpo
           onClick={() => (outgoing ? setConfirming(true) : void keepingFocus(() => leaveOrCancel(r, relay)))}
         >
           {outgoing ? 'Call off' : 'Leave'}
+        </button>
+      )}
+    </>
+  );
+}
+
+/**
+ * A session with sitting together merged in: one block, so one Remove. It takes the meetup with it (calling it off
+ * tells the people you invited; leaving one you were invited to tells no one), after a check.
+ */
+function MergedActions({
+  session,
+  meetup,
+  relay,
+  onShowShape,
+  canInvite,
+  onInviteMore,
+}: {
+  session: ScheduleItem;
+  meetup: InviteRow;
+  relay: Transport | null;
+  onShowShape: Props['onShowShape'];
+  canInvite: boolean;
+  onInviteMore: Props['onInviteMore'];
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const confirmBtn = useRef<HTMLButtonElement>(null);
+  const removeBtn = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (confirming) confirmBtn.current?.focus();
+  }, [confirming]);
+  const inv = meetup.invite;
+  const outgoing = !!inv?.outgoing;
+  return (
+    <>
+      {isOnMeetup(meetup) && (
+        <button
+          type="button"
+          class="button quiet"
+          data-shape-for={inv!.id}
+          aria-label={`Show your shape for ${session.title}`}
+          onClick={() => onShowShape(inv!.id, meetupContext(meetup.item, inv!))}
+        >
+          Show your shape
+        </button>
+      )}
+      <button
+        type="button"
+        class="button quiet"
+        disabled={!canInvite}
+        aria-label={`Invite more people to ${session.title}${canInvite ? '' : ' (too late now)'}`}
+        onClick={() => onInviteMore(session, inv!)}
+      >
+        Invite
+      </button>
+      {confirming ? (
+        <span role="group" aria-label={`Remove ${session.title}?`} class="inline-confirm">
+          <span>
+            Remove this session? {outgoing ? 'Sitting together is called off, and everyone you invited is told.' : 'You’ll leave sitting together too. Nobody is told.'}
+          </span>{' '}
+          <button
+            type="button"
+            class="button danger"
+            ref={confirmBtn}
+            onClick={() =>
+              void keepingFocus(async () => {
+                await leaveOrCancel(meetup, relay);
+                await removeItem(session);
+              })
+            }
+          >
+            Remove
+          </button>
+          <button
+            type="button"
+            class="button quiet"
+            onClick={() => {
+              setConfirming(false);
+              setTimeout(() => removeBtn.current?.focus(), 0);
+            }}
+          >
+            Keep it
+          </button>
+        </span>
+      ) : (
+        <button type="button" class="button quiet" ref={removeBtn} aria-label={`Remove ${session.title}`} onClick={() => setConfirming(true)}>
+          Remove
         </button>
       )}
     </>

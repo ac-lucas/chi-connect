@@ -137,7 +137,7 @@ export function RecapScreen({ programme, onBack }: { programme: Programme; onBac
                     <span>
                       {f.text}
                       <span class="muted">
-                        {who ? ` · ${who.profile.displayName}${who.demo ? ' (demo)' : ''}` : ''}
+                        {who ? ` · ${who.profile.displayName}` : ''}
                         {f.due ? ` · by ${new Date(f.due).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}` : ''}
                       </span>
                     </span>

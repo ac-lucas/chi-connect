@@ -5,7 +5,7 @@ import { LIMITS_INVITE } from '../relay/invites';
 import { cleanText } from '../model/text';
 import type { Connection, Invite, InviteKind, MeetingSpot } from '../model/types';
 import { timeRange, timeRangeSpoken } from '../programme/programme';
-import { deliverInvite, KIND_INFO, sendInvite } from '../schedule/invites';
+import { addPeopleToInvite, deliverInvite, KIND_INFO, sendInvite } from '../schedule/invites';
 import type { Transport } from '../relay/transport';
 import { listConnections } from '../storage/db';
 import { announce } from '../ui/announce';
@@ -24,6 +24,9 @@ export interface InviteDraft {
   room?: string;
   /** People to tick to start with (for example, connections who saved the same session). */
   preselect?: string[];
+  /** Inviting more people to a meetup you already sent: its ID, and who already has it. */
+  addTo?: string;
+  already?: string[];
 }
 
 interface Props {
@@ -42,7 +45,11 @@ const MIN_LEAD_MS = 2 * 60_000;
 export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
   const heading = useScreenHeading<HTMLHeadingElement>();
   const all = useLive(listConnections, ['connections']);
-  const people = useMemo(() => (all ?? []).filter((c) => c.state === 'connected').sort((a, b) => Number(a.demo) - Number(b.demo)), [all]);
+  const adding = !!draft.addTo;
+  const people = useMemo(
+    () => (all ?? []).filter((c) => c.state === 'connected' && !draft.already?.includes(c.id)).sort((a, b) => Number(a.demo) - Number(b.demo)),
+    [all],
+  );
   const [kind, setKind] = useState<InviteKind>(draft.kinds[0]!);
   const [chosen, setChosen] = useState<Set<string>>(new Set(draft.preselect ?? []));
   const [confirmAll, setConfirmAll] = useState(false);
@@ -103,12 +110,23 @@ export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
     setProblem(null);
     const recipients = people.filter((p) => chosen.has(p.id));
     try {
+      if (draft.addTo) {
+        const added = await addPeopleToInvite(relay, draft.addTo, recipients, (who) => announce(`${who.profile.displayName} said yes.`));
+        if (!added) {
+          setProblem('That meetup has been called off.');
+          return;
+        }
+        if (added.failed.length) return partly(added);
+        announce(`Invited ${recipients.length === 1 ? recipients[0]!.profile.displayName : `${recipients.length} more people`}.`);
+        onSent(draft.addTo);
+        return;
+      }
       const result = await sendInvite(
         relay,
         me,
         recipients,
         { kind, start, end, place, spot, note: cleanText(note, LIMITS_INVITE.note) || undefined, sessionId: draft.sessionId, sessionTitle: draft.sessionTitle },
-        (who) => announce(`${who.profile.displayName} said yes (simulated).`),
+        (who) => announce(`${who.profile.displayName} said yes.`),
       );
       if (result.failed.length) return partly(result);
       announce(`Invite sent to ${recipients.length === 1 ? recipients[0]!.profile.displayName : `${recipients.length} people`}. It’s in your day.`);
@@ -129,7 +147,7 @@ export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
     if (!made) return;
     setSending(true);
     try {
-      const failed = await deliverInvite(relay, made.invite, made.failed, (who) => announce(`${who.profile.displayName} said yes (simulated).`));
+      const failed = await deliverInvite(relay, made.invite, made.failed, (who) => announce(`${who.profile.displayName} said yes.`));
       if (failed.length) return partly({ invite: made.invite, failed });
       announce('Sent to everyone now.');
       onSent(made.invite.id);
@@ -143,7 +161,7 @@ export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
       <CloseButton onClick={onCancel} label="Close without sending" />
       <div>
         <h2 id="invite-heading" ref={heading} tabIndex={-1}>
-          Invite someone
+          {adding ? 'Invite more people' : 'Invite someone'}
         </h2>
         <p class="muted">
           <span aria-hidden="true">{timeRange(shownStart, end)}</span>
@@ -152,7 +170,9 @@ export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
         </p>
       </div>
 
-      {draft.kinds.length > 1 && (
+      {adding && <p>They join you at {draft.sessionTitle ?? 'the session'} and look for the same shape.</p>}
+
+      {!adding && draft.kinds.length > 1 && (
         <fieldset>
           <legend>What kind?</legend>
           {draft.kinds.map((k) => (
@@ -165,12 +185,12 @@ export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
           ))}
         </fieldset>
       )}
-      {draft.kinds.length === 1 && <p>{KIND_INFO[kind].line({ sessionTitle: draft.sessionTitle, place })}</p>}
+      {!adding && draft.kinds.length === 1 && <p>{KIND_INFO[kind].line({ sessionTitle: draft.sessionTitle, place })}</p>}
 
       <fieldset class="stack">
         <legend>Who?</legend>
         {people.length === 0 ? (
-          <p class="muted">Nobody to invite yet. Connect with someone first.</p>
+          <p class="muted">{adding ? 'Everyone you’re connected with already has this one.' : 'Nobody to invite yet. Connect with someone first.'}</p>
         ) : (
           <>
             <div class="actions select-all">
@@ -183,7 +203,6 @@ export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
                 <input type="checkbox" checked={chosen.has(p.id)} onChange={() => toggle(p.id)} />
                 <span>
                   {p.profile.displayName}
-                  {p.demo && <span class="badge"><span class="visually-hidden">, </span>Demo</span>}
                 </span>
               </label>
             ))}
@@ -191,7 +210,7 @@ export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
         )}
       </fieldset>
 
-      {!isSession || kind !== 'sit-together' ? (
+      {adding ? null : !isSession || kind !== 'sit-together' ? (
         <fieldset class="stack">
           <legend>Where?</legend>
           {draft.room && (
@@ -232,14 +251,18 @@ export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
         <p class="muted">In {draft.room ?? 'the session room'}.</p>
       )}
 
-      <SpotPicker value={spot} onChange={setSpot} />
+      {!adding && (
+        <>
+          <SpotPicker value={spot} onChange={setSpot} />
 
-      <div class="field">
-        <label for="invite-note">A note (optional)</label>
-        <input id="invite-note" type="text" maxLength={LIMITS_INVITE.note} value={note} onInput={(e) => setNote(e.currentTarget.value)} />
-      </div>
+          <div class="field">
+            <label for="invite-note">A note (optional)</label>
+            <input id="invite-note" type="text" maxLength={LIMITS_INVITE.note} value={note} onInput={(e) => setNote(e.currentTarget.value)} />
+          </div>
 
-      <p class="hint">Everyone who says yes gets the same shape to hold up, so you can spot each other in a crowd.</p>
+          <p class="hint">Everyone who says yes gets the same shape to hold up, so you can spot each other in a crowd.</p>
+        </>
+      )}
 
       {confirmAll && (
         <p class="card" role="alert">

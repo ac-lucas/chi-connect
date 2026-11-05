@@ -105,7 +105,7 @@ describe('seeing who is going', () => {
   it('lists names naturally', () => {
     const c = (name: string, demo = false) => ({ ...real(name, false), demo });
     expect(namesList([c('Sam')])).toBe('Sam');
-    expect(namesList([c('Sam'), c('Mina', true)])).toBe('Sam and Mina (demo)');
+    expect(namesList([c('Sam'), c('Mina', true)])).toBe('Sam and Mina');
     expect(namesList([c('A'), c('B'), c('C')])).toBe('A, B and C');
   });
 });

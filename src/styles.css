@@ -384,3 +384,7 @@ html[data-input='pointer'] button:focus-visible { outline: none; }
 
 /* A conversation starter: an easy line to say, set apart from the facts above it. */
 .opener { margin: 0.25rem 0 0; font-style: italic; color: var(--fg); }
+
+/* "Remove this session?" check inside a day row: the question on its own line, buttons under it. */
+.inline-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; flex-basis: 100%; }
+.inline-confirm > span { flex-basis: 100%; }

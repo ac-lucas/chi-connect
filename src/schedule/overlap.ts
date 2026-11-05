@@ -60,7 +60,7 @@ export function alsoGoing(sessionId: string | undefined, people: Connection[]): 
 }
 
 export function namesList(people: Connection[]): string {
-  const names = people.map((c) => c.profile.displayName + (c.demo ? ' (demo)' : ''));
+  const names = people.map((c) => c.profile.displayName);
   if (names.length <= 2) return names.join(' and ');
   return `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
 }

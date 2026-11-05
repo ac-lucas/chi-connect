@@ -5,7 +5,7 @@ import type { Connection } from '../model/types';
 import { parseWireInvite } from '../relay/invites';
 import { getInvite, listAllSchedule, putConnection, resetDatabaseForTests } from '../storage/db';
 import { findMeCard } from './findme';
-import { acceptInvite, cancelInvite, declineInvite, handleInviteMessage, pendingIncoming, sendInvite } from './invites';
+import { acceptInvite, addPeopleToInvite, cancelInvite, declineInvite, handleInviteMessage, pendingIncoming, sendInvite } from './invites';
 import { describeSpot } from './spot';
 
 const H = 3_600_000;
@@ -120,6 +120,18 @@ describe('sending and answering', () => {
     expect((await listAllSchedule()).some((s) => s.inviteId === invite.id)).toBe(true);
     await cancelInvite(null, (await getInvite(invite.id))!);
     expect((await listAllSchedule()).some((s) => s.inviteId === invite.id)).toBe(false);
+  });
+
+  it('invites more people to the same meetup, adding only new ones', async () => {
+    const a = conn('A', true);
+    const b = conn('B', true);
+    const { invite } = await sendInvite(null, 'Ana', [a], { kind: 'sit-together', start: Date.now() + H, end: Date.now() + 2 * H, sessionId: 'p1' }, () => {});
+    const added = await addPeopleToInvite(null, invite.id, [a, b], () => {});
+    expect(added?.invite.id).toBe(invite.id);
+    expect((await getInvite(invite.id))?.recipientIds).toEqual([a.id, b.id]);
+    expect((await listAllSchedule()).filter((s) => s.inviteId === invite.id)).toHaveLength(1);
+    await cancelInvite(null, (await getInvite(invite.id))!);
+    expect(await addPeopleToInvite(null, invite.id, [conn('C', true)], () => {})).toBeNull();
   });
 
   it('reports a failure for real people when there is no relay', async () => {
