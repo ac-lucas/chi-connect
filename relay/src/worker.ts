@@ -2,7 +2,7 @@
 // then calls one SQLite-backed Durable Object that owns all relay state (strongly consistent,
 // so a six-digit code can only be redeemed once). Platform behaviour: verify against current docs.
 import { DurableObject } from 'cloudflare:workers';
-import { RelayCore, type RelayRequest, type Sql } from './core';
+import { clientPrefix, RelayCore, type RelayRequest, type Sql } from './core';
 
 export interface Env {
   RELAY: DurableObjectNamespace<RelayObject>;
@@ -54,7 +54,7 @@ export class RelayObject extends DurableObject<Env> {
   }
 
   private async clientKey(ip: string): Promise<string> {
-    const h = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${this.salt}|${ip}`)));
+    const h = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${this.salt}|${clientPrefix(ip)}`)));
     return Array.from(h.slice(0, 12), (b) => b.toString(16).padStart(2, '0')).join('');
   }
 

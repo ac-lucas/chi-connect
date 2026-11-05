@@ -159,7 +159,8 @@ export interface Invite {
   recipientIds: string[];
   /** Only filled in on the sender's side, and only with people who said yes. */
   acceptedIds: string[];
-  status: 'pending' | 'accepted' | 'cancelled';
+  /** 'declined' is a local tombstone (no details kept), so a repeated delivery can't bring the invite back. */
+  status: 'pending' | 'accepted' | 'cancelled' | 'declined';
   /** Made up on this phone to show how invites work (demo people). Labelled "Simulated". */
   simulated?: boolean;
 }

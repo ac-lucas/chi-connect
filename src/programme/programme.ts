@@ -17,6 +17,20 @@ export function startOfDay(ts: number): number {
   return d.getTime();
 }
 
+/** Midnight at the start of the next day. Not `+ 24 h`: days are 23 or 25 hours long when clocks change. */
+export function nextDay(ts: number): number {
+  const d = new Date(startOfDay(ts));
+  d.setDate(d.getDate() + 1);
+  return d.getTime();
+}
+
+/** The wall-clock time `minutes` after midnight on the day containing `ts` (correct on clock-change days). */
+export function atMinutes(ts: number, minutes: number): number {
+  const d = new Date(startOfDay(ts));
+  d.setHours(0, minutes, 0, 0);
+  return d.getTime();
+}
+
 export function programmeDays(p: Programme): number[] {
   return [...new Set(p.sessions.map((s) => startOfDay(s.start)))].sort((a, b) => a - b);
 }

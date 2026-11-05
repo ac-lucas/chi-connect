@@ -73,6 +73,17 @@ describe('connect codes', () => {
   }
 });
 
+describe('very long names', () => {
+  it('keeps a name of 60 long emoji sequences decodable, by shortening it', async () => {
+    const family = '👩🏽‍👩🏽‍👧🏽‍👦🏽';
+    const p = payload({ displayName: family.repeat(LIMITS.displayName) });
+    const { link, leftOut, payload: fitted } = await fitLink(p, BASE, false);
+    expect(link.length).toBeLessThanOrEqual(MAX_CODE_CHARS);
+    expect(leftOut).toContain('the end of your name');
+    expect((await decodeCode(link, NOW)).profile.displayName).toBe(fitted.profile.displayName);
+  });
+});
+
 describe('decoding untrusted input', () => {
   const expectProblem = async (input: string, problem: string, now = NOW) => {
     await expect(decodeCode(input, now)).rejects.toSatisfy((e: unknown) => e instanceof DecodeError && e.problem === problem);

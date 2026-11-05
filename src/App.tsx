@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { ConnectPayload } from './connect/payload';
-import { syncOnce } from './relay/protocol';
+import { hasKeys, INTRO_KEEP_MS, syncOnce } from './relay/protocol';
 import { relayFromEnv } from './relay/transport';
 import { createProfile, draftFromProfile, emptyDraft, updateProfile, type ProfileDraft } from './model/profile';
 import type { Connection, Profile } from './model/types';
@@ -20,9 +20,11 @@ import { RecapScreen } from './screens/RecapScreen';
 import { handleInviteMessage } from './schedule/invites';
 import { handleSessionsMessage, shareSessionsIfChanged } from './schedule/overlap';
 import { checkFeed, POLL_MS } from './programme/feed';
-import { resolveProgramme } from './programme/programme';
+import { resolveProgramme, startOfDay } from './programme/programme';
+import { isOver } from './programme/preview';
+import { makeSampleProgramme } from './programme/sample';
 import type { Programme } from './programme/types';
-import { getIntros, getProfile, listAllSchedule, getSampleAnchor, getSetting, removeSampleSessions, setSetting, listConnections, putConnection, requestPersistentStorage, saveProfile, seedDemoOnce } from './storage/db';
+import { getIntros, pruneIntros, updateConnection, getProfile, listAllSchedule, getSampleAnchor, getSetting, removeSampleSessions, removeProgrammeSessions, syncSavedSessions, setSetting, listConnections, putConnection, requestPersistentStorage, saveProfile, seedDemoOnce } from './storage/db';
 import { announce } from './ui/announce';
 import { Announcer } from './ui/Announcer';
 
@@ -80,20 +82,42 @@ export function App() {
     let stopped = false;
     let busy = false;
     const show = async () => {
-      const anchor = await getSampleAnchor();
-      const feed = await getSetting('programmeFeed');
-      if (!stopped) setProgramme(resolveProgramme(anchor, feed));
+      try {
+        let anchor = await getSampleAnchor();
+        const feed = await getSetting('programmeFeed');
+        let p = resolveProgramme(anchor, feed);
+        // A preview or sample whose days have all gone by (someone coming back a week later): start it from today.
+        if ((p.sample || p.shiftedFrom !== undefined) && isOver(p)) {
+          anchor = startOfDay(Date.now());
+          await setSetting('sampleAnchor', anchor);
+          p = resolveProgramme(anchor, feed);
+        }
+        // Saved sessions follow the programme: moved times, new rooms and renames show up in your day.
+        await syncSavedSessions(p.sessions);
+        if (!stopped) setProgramme(p);
+      } catch {
+        // Storage trouble: still show something to plan with rather than "Loading…" forever.
+        if (!stopped) setProgramme(makeSampleProgramme(startOfDay(Date.now())));
+      }
     };
     const check = async () => {
       if (busy || stopped || document.visibilityState !== 'visible') return;
       busy = true;
       try {
         const held = await getSetting('programmeFeed');
-        const r = await checkFeed(held ? { edition: held.edition, revision: held.revision } : null, (await getSetting('feedCheckedAt')) ?? 0);
+        const r = await checkFeed(held ? { edition: held.edition, revision: held.revision } : null, (await getSetting('feedCheckedAt')) ?? 0, {
+          skip: await getSetting('feedUnusable'),
+        });
         if (r.checked) await setSetting('feedCheckedAt', Date.now());
+        if (r.unusable) await setSetting('feedUnusable', r.unusable);
         if (r.programme && r.programme.sessions.length) {
           await setSetting('programmeFeed', r.programme);
           if (!held) await removeSampleSessions();
+          else if (held.edition !== r.programme.edition) {
+            // A new edition (the real programme replacing the preview): sessions saved from the old one go.
+            const n = await removeProgrammeSessions();
+            if (n) announce(`The ${r.programme.name} programme is here. Your preview sessions were cleared; add the real ones.`);
+          }
           await show();
         }
       } catch {
@@ -142,10 +166,13 @@ export function App() {
       running = true;
       try {
         const newInvites: string[] = [];
+        // Expired one-way codes (and their private keys) go once no late request can still arrive.
+        await pruneIntros((i) => hasKeys(i) && i.expiresAt + INTRO_KEEP_MS > Date.now());
         const r = await syncOnce(relay, {
           intros: getIntros,
           connections: listConnections,
           put: putConnection,
+          patch: updateConnection,
           onPairMessage: async (c, msg, sentAt) => {
             if (msg.t === 'sessions') return handleSessionsMessage(c, msg.ids);
             const what = await handleInviteMessage(c, msg, sentAt);
@@ -156,12 +183,18 @@ export function App() {
         await shareSessionsIfChanged(relay);
         if (r.messages) setSyncTick((n) => n + 1);
         // New invites are announced, except while protected time or a Focus session is running (they wait).
+        // One announcement per sync: the live region only reads the last message it's given.
+        const lines: string[] = [];
         if (newInvites.length && !(await isHoldingNow())) {
-          for (const n of newInvites) announce(`${n} sent you an invite.`);
+          lines.push(newInvites.length === 1 ? `${newInvites[0]} sent you an invite.` : `${newInvites.length} new invites.`);
         }
-        if (r.newRequests.length || r.accepted.length) await refreshConnections();
-        for (const c of r.newRequests) announce(`${c.profile.displayName} would like to connect.`);
-        for (const c of r.accepted) announce(`${c.profile.displayName} said yes. You’re connected.`);
+        if (r.newRequests.length) {
+          lines.push(r.newRequests.length === 1 ? `${r.newRequests[0]!.profile.displayName} would like to connect.` : `${r.newRequests.length} new requests to connect.`);
+        }
+        for (const c of r.accepted) lines.push(`${c.profile.displayName} said yes. You’re connected.`);
+        if (lines.length) announce(lines.join(' '));
+        // Always refresh: a sync can change connections (accepts, shared session lists, sharing hashes).
+        await refreshConnections();
       } catch {
         // Offline or the relay is busy: try again next time.
       } finally {
@@ -236,6 +269,7 @@ export function App() {
     body = (
       <ConnectScreen
         profile={profile}
+        relay={relay}
         initialCode={screen.code}
         onOneWayCode={relay ? (theirs) => setScreen({ kind: 'request', theirs }) : undefined}
         onCancel={() => goTab('people')}

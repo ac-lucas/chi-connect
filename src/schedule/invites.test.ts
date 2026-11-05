@@ -66,16 +66,46 @@ describe('receiving invites', () => {
     expect(await pendingIncoming()).toEqual([]);
   });
 
-  it('declining removes it and sends nothing; expired ones disappear quietly', async () => {
+  it("declining keeps no details, a repeat delivery can't bring it back, and expired ones disappear quietly", async () => {
     const sam = conn('Sam');
     await putConnection(sam);
     const w = parseWireInvite(wire())!;
     await handleInviteMessage(sam, { t: 'invite', v: 1, invite: w }, Date.now());
     await declineInvite((await getInvite(w.id))!);
+    const tomb = (await getInvite(w.id))!;
+    expect(tomb.status).toBe('declined');
+    expect([tomb.place, tomb.note, tomb.meetingSpot]).toEqual([undefined, undefined, undefined]);
+    expect(await handleInviteMessage(sam, { t: 'invite', v: 1, invite: w }, Date.now())).toBeNull(); // replayed
+    expect(await pendingIncoming()).toEqual([]);
+    await pendingIncoming(w.start + 1); // its time has come: the tombstone goes too
     expect(await getInvite(w.id)).toBeNull();
     const soon = parseWireInvite(wire({ start: Date.now() + 1000, end: Date.now() + H }))!;
     await handleInviteMessage(sam, { t: 'invite', v: 1, invite: soon }, Date.now());
     expect(await pendingIncoming(Date.now() + 2000)).toEqual([]);
+  });
+});
+
+describe('retention', () => {
+  it('deletes the meeting spot and note once the meetup has ended', async () => {
+    const sam = conn('Sam');
+    await putConnection(sam);
+    const w = parseWireInvite(wire({ spot: { row: 'front', side: 'left' }, note: 'by the door' }))!;
+    await handleInviteMessage(sam, { t: 'invite', v: 1, invite: w }, Date.now());
+    await acceptInvite(null, { ...(await getInvite(w.id))!, simulated: true });
+    expect((await getInvite(w.id))!.meetingSpot).toBeTruthy();
+    await pendingIncoming(w.end + 1);
+    const after = (await getInvite(w.id))!;
+    expect(after.meetingSpot).toBeUndefined();
+    expect(after.note).toBeUndefined();
+    expect(after.status).toBe('accepted'); // still counts for your own recap
+  });
+
+  it('refuses invites dated far in the future', async () => {
+    const sam = conn('Sam');
+    await putConnection(sam);
+    const far = Date.now() + 60 * 24 * H;
+    const w = parseWireInvite(wire({ start: far, end: far + H }))!;
+    expect(await handleInviteMessage(sam, { t: 'invite', v: 1, invite: w }, Date.now())).toBeNull();
   });
 });
 

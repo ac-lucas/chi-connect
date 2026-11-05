@@ -20,6 +20,11 @@ import {
   saveIntros,
   seedDemoOnce,
   setSetting,
+  updateConnection,
+  wipeEverything,
+  putInvite,
+  getInvite,
+  listAllSchedule,
 } from './db';
 
 let n = 0;
@@ -71,9 +76,46 @@ describe('storage', () => {
     const [back] = await getIntros();
     expect(back!.privateKey!.extractable).toBe(false);
     const relay = new SimulatedTransport();
+    await relay.claim({ id: intro.mailboxId, token: intro.mailboxToken });
     await sendRequest(relay, introPayload({ displayName: 'Ana' }, intro), { displayName: 'Sam' });
     const [msg] = (await relay.inbox([{ id: intro.mailboxId, token: intro.mailboxToken }]))[intro.mailboxId]!;
     expect((await openHello(back!, msg!.ct))?.profile.displayName).toBe('Sam');
+  });
+
+  it('updateConnection changes only the given fields of the stored record', async () => {
+    await putConnection({ ...conn('a'), sharedSessionIds: ['s1'] });
+    const stale = (await getConnection('a'))!;
+    await updateConnection('a', { sharedSessionIds: ['s1', 's2'] }); // something newer arrives
+    await updateConnection(stale.id, { scheduleSharing: true }); // a screen toggles from its old copy
+    const now = (await getConnection('a'))!;
+    expect(now.sharedSessionIds).toEqual(['s1', 's2']);
+    expect(now.scheduleSharing).toBe(true);
+    expect(await updateConnection('missing', { scheduleSharing: true })).toBeNull();
+  });
+
+  it('removing a person also removes their invites, the meetups from them, and them from invites I sent', async () => {
+    await putConnection(conn('a'));
+    await putConnection(conn('b'));
+    const base = { kind: 'meal' as const, start: 1, end: 2, createdAt: 1, expiresAt: 1, acceptedIds: [], status: 'accepted' as const, senderName: 'x' };
+    await putInvite({ ...base, id: 'fromA', outgoing: false, fromConnectionId: 'a', recipientIds: [], meetingSpot: { row: 'front' } });
+    await putInvite({ ...base, id: 'toA', outgoing: true, recipientIds: ['a'], acceptedIds: [] });
+    await putInvite({ ...base, id: 'toAB', outgoing: true, recipientIds: ['a', 'b'], acceptedIds: ['a', 'b'] });
+    await putScheduleItem({ id: 'inv-fromA', type: 'invite', source: 'invite', title: 'Lunch with a', start: 1, end: 2, inviteId: 'fromA' });
+    await removeConnection('a');
+    expect(await getInvite('fromA')).toBeNull();
+    expect(await getInvite('toA')).toBeNull();
+    expect((await getInvite('toAB'))!.recipientIds).toEqual(['b']);
+    expect((await getInvite('toAB'))!.acceptedIds).toEqual(['b']);
+    expect((await listAllSchedule()).map((i) => i.id)).not.toContain('inv-fromA');
+  });
+
+  it('wipes everything, even with another connection open, and starts empty afterwards', async () => {
+    await saveProfile(createProfile({ ...emptyDraft(), displayName: 'Ana' }));
+    await putConnection(conn('a'));
+    // A second "tab": the open database is asked to let go rather than blocking the delete.
+    await wipeEverything();
+    expect(await getProfile()).toBeNull();
+    expect(await listConnections()).toEqual([]);
   });
 
   it('stores typed settings', async () => {

@@ -25,6 +25,17 @@ export const INTRO_TTL_MS = 20 * 60 * 60 * 1000;
 /** Keep intros a while after they expire so late requests can still be read. */
 export const INTRO_KEEP_MS = 48 * 60 * 60 * 1000;
 const MESSAGE_TTL_S = 24 * 60 * 60;
+/** Allowance for phone clocks that disagree when checking an intro's own expiry. */
+const CLOCK_SKEW_MS = 10 * 60 * 1000;
+/** Most new requests taken in one sync, and most waiting at once; more are dropped quietly (flood guard). */
+export const MAX_NEW_REQUESTS_PER_SYNC = 10;
+export const MAX_PENDING_REQUESTS = 30;
+
+/** The relay's timestamp is not trusted: keep it between a day ago and now. */
+export function clampSentAt(created: number, now: number): number {
+  if (!Number.isFinite(created)) return now;
+  return Math.min(now, Math.max(now - (MESSAGE_TTL_S * 1000 + 60 * 60 * 1000), created));
+}
 const ID = /^[A-Za-z0-9_-]{22}$/;
 const SESSION_ID = /^[A-Za-z0-9_-]{1,40}$/;
 export const MAX_SHARED_SESSIONS = 300;
@@ -104,6 +115,8 @@ export async function sendRequest(t: Transport, theirs: ConnectPayload, me: Shar
  */
 export async function openHello(intro: Intro, ct: string, now = Date.now(), sentAt = now): Promise<Connection | null> {
   if (!hasKeys(intro) || ct.length <= PUBLIC_KEY_CHARS) return null;
+  // The code says it works until expiresAt: refuse requests sent after that (kept intros are only for late mail).
+  if (sentAt > intro.expiresAt + CLOCK_SKEW_MS) return null;
   const senderKey = ct.slice(0, PUBLIC_KEY_CHARS);
   if (!isPublicKeyText(senderKey)) return null;
   let hs: string;
@@ -126,6 +139,7 @@ export async function openHello(intro: Intro, ct: string, now = Date.now(), sent
   }
   // The key inside must be the one the hello was sealed with, so nobody can wrap someone else's code.
   if (theirs.mode !== 'r' || !theirs.mailboxId || theirs.nonce === intro.nonce || theirs.publicKey !== senderKey) return null;
+  if (theirs.mailboxId === intro.mailboxId) return null; // pointing us at our own mailbox: refuse
   return {
     id: randomId(),
     profile: theirs.profile,
@@ -206,6 +220,8 @@ export interface SyncStore {
   intros(): Promise<Intro[]>;
   connections(): Promise<Connection[]>;
   put(c: Connection): Promise<void>;
+  /** Change some fields of a stored connection (read fresh, so newer fields aren't overwritten). */
+  patch?(id: string, p: Partial<Connection>): Promise<unknown>;
   /** Invites and replies from a connected pair. `sentAt` is when the relay received it. */
   onPairMessage?(c: Connection, msg: Exclude<PairMessage, { t: 'accept' }>, sentAt: number): Promise<void>;
 }
@@ -237,23 +253,31 @@ export async function syncOnce(t: Transport, store: SyncStore, now = Date.now())
     acks.set(box.id, a);
   };
   const knownNonces = new Set(conns.map((c) => c.theirNonce).filter(Boolean));
+  let waiting = conns.filter((c) => c.state === 'pending-received').length;
 
   for (const intro of intros) {
     const box = { id: intro.mailboxId, token: intro.mailboxToken };
     for (const m of inbox[intro.mailboxId] ?? []) {
-      const pending = await openHello(intro, m.ct, now, m.created);
-      if (pending && !knownNonces.has(pending.theirNonce)) {
-        knownNonces.add(pending.theirNonce);
-        await store.put(pending);
-        result.newRequests.push(pending);
+      const full = waiting >= MAX_PENDING_REQUESTS || result.newRequests.length >= MAX_NEW_REQUESTS_PER_SYNC;
+      try {
+        const pending = full ? null : await openHello(intro, m.ct, now, clampSentAt(m.created, now));
+        if (pending && !knownNonces.has(pending.theirNonce)) {
+          knownNonces.add(pending.theirNonce);
+          await store.put(pending);
+          result.newRequests.push(pending);
+          waiting += 1;
+        }
+      } catch {
+        continue; // storage trouble: leave it on the relay and try again next sync
       }
-      ackOne(box, m.id); // handled, repeated, or junk: clear it either way
+      ackOne(box, m.id); // handled, repeated, junk, or over the limit: clear it either way
     }
   }
 
   for (const c of owned) {
     const box = { id: c.myMailboxId!, token: c.myMailboxToken! };
     for (const m of inbox[c.myMailboxId!] ?? []) {
+      const sentAt = clampSentAt(m.created, now);
       const opened = await openPair(c, m.ct);
       if (opened === null) {
         // Doesn't open with our key: junk, or meant for someone else. Clear it, or it would be downloaded and
@@ -262,17 +286,22 @@ export async function syncOnce(t: Transport, store: SyncStore, now = Date.now())
         continue;
       }
       const msg = parsePairMessage(opened);
-      if (msg?.t === 'accept') {
-        if (c.state === 'pending-sent') {
-          const done: Connection = { ...c, state: 'connected', connectedAt: now, mailboxId: msg.mailbox };
-          await store.put(done);
-          result.accepted.push(done);
+      try {
+        if (msg?.t === 'accept') {
+          if (c.state === 'pending-sent') {
+            const done: Connection = { ...c, state: 'connected', connectedAt: now, mailboxId: msg.mailbox };
+            if (store.patch) await store.patch(c.id, { state: 'connected', connectedAt: now, mailboxId: msg.mailbox });
+            else await store.put(done);
+            result.accepted.push(done);
+          }
+          ackOne(box, m.id);
+        } else if (msg && c.state === 'connected' && store.onPairMessage) {
+          await store.onPairMessage(c, msg, sentAt);
+          result.messages += 1;
+          ackOne(box, m.id);
         }
-        ackOne(box, m.id);
-      } else if (msg && c.state === 'connected' && store.onPairMessage) {
-        await store.onPairMessage(c, msg, m.created);
-        result.messages += 1;
-        ackOne(box, m.id);
+      } catch {
+        // One message failing (storage trouble) must not stop the others being handled and cleared.
       }
       // Anything else that opened is left alone: it may be a newer message type, and it expires on its own.
     }

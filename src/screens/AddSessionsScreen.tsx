@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from 'preact/hooks';
-import { randomId } from '../model/ids';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { knownTagById } from '../model/tags';
 import type { ScheduleItem } from '../model/types';
 import { dayLabel, MAX_RESULTS, overlaps, programmeDays, searchSessions, timeRange, timeRangeSpoken } from '../programme/programme';
@@ -35,14 +34,25 @@ export function AddSessionsScreen({ programme, initialDay, onDone }: Props) {
   const results = useMemo(() => searchSessions(programme, query, day), [programme, query, day]);
   const savedBySession = new Map(saved.map((s) => [s.programmeSessionId, s]));
 
+  // Taps on a session whose save is still in flight are ignored, so a double tap can't save it twice.
+  const inFlight = useRef(new Set<string>());
   async function toggle(s: ProgrammeSession) {
+    if (inFlight.current.has(s.id)) return;
+    inFlight.current.add(s.id);
+    try {
+      await toggleNow(s);
+    } finally {
+      inFlight.current.delete(s.id);
+    }
+  }
+  async function toggleNow(s: ProgrammeSession) {
     const existing = savedBySession.get(s.id);
     if (existing) {
       await deleteScheduleItem(existing.id);
       announce(`Removed ${s.title}.`);
     } else {
       await putScheduleItem({
-        id: randomId(),
+        id: `saved-${s.id}`, // one per programme session: saving it again overwrites, never duplicates
         type: 'session',
         source: 'user',
         programmeSessionId: s.id,

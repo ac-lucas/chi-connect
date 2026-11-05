@@ -20,6 +20,8 @@ export interface Settings {
   programmeFeed: import('../programme/transform').FeedProgramme;
   /** When the feed was last asked about (so reloads don't poll faster than once a minute). */
   feedCheckedAt: number;
+  /** A revision that was downloaded but couldn't be used (not downloaded again). */
+  feedUnusable: { edition: string; revision: number };
   /** F18: no nudges or suggestions at all. */
   quietMode: boolean;
   /** F18: nudges snoozed until this time. */
@@ -47,7 +49,9 @@ let dbPromise: Promise<IDBPDatabase<PebbleSchema>> | null = null;
 
 function db(): Promise<IDBPDatabase<PebbleSchema>> {
   dbPromise ??= openDB<PebbleSchema>(dbName, VERSION, {
-    upgrade(d) {
+    // Step through versions, so a later VERSION bump adds to an existing database instead of failing.
+    upgrade(d, oldVersion) {
+      if (oldVersion >= 1) return;
       d.createObjectStore('profile');
       d.createObjectStore('settings');
       d.createObjectStore('connections', { keyPath: 'id' }).createIndex('byState', 'state');
@@ -57,6 +61,19 @@ function db(): Promise<IDBPDatabase<PebbleSchema>> {
       d.createObjectStore('invites', { keyPath: 'id' });
       d.createObjectStore('catchUp', { keyPath: 'programmeSessionId' });
     },
+    // Another tab (or a wipe) needs the database: let go, and open again on next use.
+    blocking() {
+      void dbPromise?.then((d) => d.close());
+      dbPromise = null;
+    },
+    // The browser closed the connection (it can, under storage pressure): open again on next use.
+    terminated() {
+      dbPromise = null;
+    },
+  });
+  // A failed open isn't cached: the next call tries again.
+  dbPromise.catch(() => {
+    dbPromise = null;
   });
   return dbPromise;
 }
@@ -96,13 +113,47 @@ export async function getConnection(id: string): Promise<Connection | null> {
 export async function putConnection(c: Connection): Promise<void> {
   await (await db()).put('connections', c);
 }
-/** Remove a connection and everything kept about them on this device. */
+/**
+ * Change some fields of a connection, reading the current record inside the same transaction. Use this rather
+ * than putConnection({ ...copy }): a copy held by a screen can be stale and would write over newer fields.
+ */
+export async function updateConnection(id: string, patch: Partial<Connection> | ((c: Connection) => Partial<Connection>)): Promise<Connection | null> {
+  const tx = (await db()).transaction('connections', 'readwrite');
+  const current = await tx.store.get(id);
+  if (!current) {
+    await tx.done;
+    return null;
+  }
+  const next = { ...current, ...(typeof patch === 'function' ? patch(current) : patch), id };
+  await tx.store.put(next);
+  await tx.done;
+  return next;
+}
+
+/**
+ * Remove a connection and everything kept about them on this device: notes, follow-ups, invites from them (and
+ * the meetups in your day that came from those), and their place in invites you sent.
+ */
 export async function removeConnection(id: string): Promise<void> {
-  const tx = (await db()).transaction(['connections', 'notes', 'followUps'], 'readwrite');
+  const tx = (await db()).transaction(['connections', 'notes', 'followUps', 'invites', 'schedule'], 'readwrite');
   await tx.objectStore('connections').delete(id);
   for (const store of ['notes', 'followUps'] as const) {
     const s = tx.objectStore(store);
     for (const key of await s.index('byConnection').getAllKeys(id)) await s.delete(key);
+  }
+  const invites = tx.objectStore('invites');
+  const schedule = tx.objectStore('schedule');
+  for (const inv of await invites.getAll()) {
+    const fromThem = !inv.outgoing && inv.fromConnectionId === id;
+    const toThem = inv.outgoing && inv.recipientIds.includes(id);
+    if (!fromThem && !toThem) continue;
+    const recipientIds = inv.recipientIds.filter((r) => r !== id);
+    if (fromThem || recipientIds.length === 0) {
+      await invites.delete(inv.id);
+      await schedule.delete(`inv-${inv.id}`);
+    } else {
+      await invites.put({ ...inv, recipientIds, acceptedIds: inv.acceptedIds.filter((r) => r !== id) });
+    }
   }
   await tx.done;
 }
@@ -187,6 +238,13 @@ export async function getIntros(): Promise<Intro[]> {
   return out;
 }
 
+/** Drop intros we no longer need (their private keys go with them). */
+export async function pruneIntros(keep: (i: Intro) => boolean): Promise<void> {
+  const saved = (await getSetting('intros')) ?? [];
+  const kept = saved.filter(keep);
+  if (kept.length !== saved.length) await setSetting('intros', kept);
+}
+
 export async function saveIntros(intros: Intro[]): Promise<void> {
   // An intro with a JWK copy is stored without its CryptoKey, so saving works where keys can't be stored.
   await setSetting(
@@ -216,10 +274,17 @@ export async function deleteCatchUp(programmeSessionId: string): Promise<void> {
   await (await db()).delete('catchUp', programmeSessionId);
 }
 
+/** Read and change one setting inside a single transaction, so two quick changes can't lose one of them. */
+async function updateSetting<K extends keyof Settings>(key: K, fn: (current: Settings[K] | undefined) => Settings[K]): Promise<void> {
+  const tx = (await db()).transaction('settings', 'readwrite');
+  const current = (await tx.store.get(key)) as Settings[K] | undefined;
+  await tx.store.put(fn(current), key);
+  await tx.done;
+}
+
 /** Remember a dismissed suggestion. */
 export async function dismiss(key: string): Promise<void> {
-  const list = (await getSetting('dismissed')) ?? [];
-  if (!list.includes(key)) await setSetting('dismissed', [...list, key].slice(-300));
+  await updateSetting('dismissed', (list = []) => (list.includes(key) ? list : [...list, key].slice(-300)));
 }
 
 // Invites
@@ -262,16 +327,77 @@ export async function removeSampleSessions(): Promise<number> {
   return stale.length;
 }
 
-export async function skipBreak(key: string): Promise<void> {
-  const list = (await getSetting('skippedBreaks')) ?? [];
-  if (!list.includes(key)) await setSetting('skippedBreaks', [...list, key].slice(-500));
+/**
+ * Keep saved sessions in step with the programme: a session that moved, changed room or was renamed is updated
+ * in your day. Returns how many changed.
+ */
+export async function syncSavedSessions(sessions: { id: string; start: number; end: number; title: string; room?: string }[]): Promise<number> {
+  const byId = new Map(sessions.map((s) => [s.id, s]));
+  const tx = (await db()).transaction('schedule', 'readwrite');
+  let changed = 0;
+  for (const item of await tx.store.getAll()) {
+    if (item.type !== 'session' || !item.programmeSessionId) continue;
+    const s = byId.get(item.programmeSessionId);
+    if (!s) continue;
+    if (s.start !== item.start || s.end !== item.end || s.title !== item.title || s.room !== item.place) {
+      await tx.store.put({ ...item, start: s.start, end: s.end, title: s.title, place: s.room });
+      changed++;
+    }
+  }
+  await tx.done;
+  return changed;
 }
 
-/** Delete everything this app keeps on this device. */
+/** Remove sessions saved from a programme that has been replaced by another edition (their IDs mean nothing now). */
+export async function removeProgrammeSessions(): Promise<number> {
+  const tx = (await db()).transaction('schedule', 'readwrite');
+  let n = 0;
+  for (const item of await tx.store.getAll()) {
+    if (item.type === 'session' && item.programmeSessionId) {
+      await tx.store.delete(item.id);
+      n++;
+    }
+  }
+  await tx.done;
+  return n;
+}
+
+export async function skipBreak(key: string): Promise<void> {
+  await updateSetting('skippedBreaks', (list = []) => (list.includes(key) ? list : [...list, key].slice(-500)));
+}
+
+/**
+ * Delete everything this app keeps on this device. Other open tabs are asked to let go first (see `blocking`);
+ * if one still holds on, this gives up after a few seconds rather than waiting forever.
+ */
 export async function wipeEverything(): Promise<void> {
-  if (dbPromise) (await dbPromise).close();
+  if (dbPromise) {
+    try {
+      (await dbPromise).close();
+    } catch {
+      // never opened: nothing to close
+    }
+  }
   dbPromise = null;
-  await deleteDB(dbName);
+  keyStorage = null;
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('blocked')), 5000);
+    deleteDB(dbName, { blocked: () => {} }).then(
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
+  try {
+    sessionStorage.clear();
+  } catch {
+    // storage blocked: nothing kept there anyway
+  }
 }
 
 /**

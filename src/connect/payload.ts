@@ -7,7 +7,7 @@
 // Everything decoded here is untrusted: size-limited, strictly parsed, and cleaned field by field.
 
 import { knownTagById, resolveTag } from '../model/tags';
-import { cleanText, cleanUrl, LIMITS } from '../model/text';
+import { cleanText, cleanUrl, graphemes, LIMITS } from '../model/text';
 import type { SharedProfile, Tag } from '../model/types';
 import { fromBase64Url, toBase64Url } from './base64url';
 import { importPublicKey, isPublicKeyText } from './pairing';
@@ -193,7 +193,15 @@ export async function fitLink(
     } else if (profile.role) {
       leftOut.push(profile.role);
       profile.role = undefined;
-    } else return { link, payload, leftOut }; // name alone always fits (60 characters)
+    } else {
+      // Only the name is left. 60 plain characters always fit, but 60 long emoji sequences may not: shorten the
+      // name a character at a time, so the code always stays within what decodeCode accepts.
+      const chars = graphemes(profile.displayName);
+      if (chars.length <= 1 && link.length <= MAX_CODE_CHARS) return { link, payload, leftOut };
+      if (chars.length <= 1) throw new Error('name-too-long'); // can't happen with cleaned names; never emit a bad code
+      if (!leftOut.includes('the end of your name')) leftOut.push('the end of your name');
+      profile.displayName = chars.slice(0, -1).join('');
+    }
   }
 }
 

@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { randomId } from '../model/ids';
 import type { Connection, EnergyLevel, EnergySetting, Invite, ProtectedKind, ScheduleItem } from '../model/types';
-import { dayLabel, programmeDays, startOfDay, timeRange, timeRangeSpoken } from '../programme/programme';
+import { atMinutes, dayLabel, nextDay, programmeDays, startOfDay, timeRange, timeRangeSpoken } from '../programme/programme';
 import type { Programme } from '../programme/types';
 import { planDay, type Busy, type HeadsUp, type PlannedBreak } from '../schedule/breaks';
 import { ENERGY, ENERGY_ORDER, energyToday } from '../schedule/energy';
-import { deleteInvite, deleteScheduleItem, dismiss, getSetting, listAllSchedule, listConnections, listInvites, putScheduleItem, setSetting, skipBreak } from '../storage/db';
-import { cancelInvite, inviteTitle, KIND_INFO, pendingIncoming } from '../schedule/invites';
+import { deleteScheduleItem, dismiss, getSetting, listAllSchedule, listConnections, listInvites, putScheduleItem, setSetting, skipBreak } from '../storage/db';
+import { cancelInvite, declineInvite, inviteTitle, KIND_INFO, pendingIncoming } from '../schedule/invites';
 import type { Transport } from '../relay/transport';
 import { MeetupShapeView, ShapeBadge } from './ShapeCard';
 import { describeSpot } from '../schedule/spot';
@@ -30,7 +29,6 @@ interface Props {
   onInvite: (draft: InviteDraft) => void;
 }
 
-const DAY_MS = 86_400_000;
 const PROTECT_LABELS: Record<Exclude<ProtectedKind, 'focus'>, { label: string; glyph: string; line: string }> = {
   recharge: { label: 'Recharge', glyph: '■', line: 'Downtime. Invites wait until it’s over.' },
   off: { label: 'Off', glyph: '⏸', line: 'Everything waits. Nobody sees why.' },
@@ -71,6 +69,28 @@ export function TodayScreen({ name, programme, relay, myTopics, syncTick, onAddS
   const [connections, setConnections] = useState<Connection[]>([]);
   const [shapeFor, setShapeFor] = useState<{ id: string; context: string } | null>(null);
   const [hiddenPrompts, setHiddenPrompts] = useState<string[]>([]);
+  // Time moves on: re-render every 30 s and when the app comes back to the front, so "now", "today", held
+  // invites and the shape prompt follow the clock. Every few minutes, reload too (expired invites tidy away).
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    let n = 0;
+    const tick = () => {
+      setTick((x) => x + 1);
+      if (++n % 6 === 0) void refresh();
+    };
+    const t = setInterval(tick, 30_000);
+    const onShow = () => {
+      if (document.visibilityState === 'visible') {
+        setTick((x) => x + 1);
+        void refresh();
+      }
+    };
+    document.addEventListener('visibilitychange', onShow);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener('visibilitychange', onShow);
+    };
+  }, []);
 
   const refresh = async () => {
     setItems(await listAllSchedule());
@@ -93,7 +113,7 @@ export function TodayScreen({ name, programme, relay, myTopics, syncTick, onAddS
   }, [invites]);
 
   const { level, setToday } = energyToday(energySetting, now);
-  const dayItems = items.filter((i) => i.start >= day && i.start < day + DAY_MS);
+  const dayItems = items.filter((i) => i.start >= day && i.start < nextDay(day));
   const plan = useMemo(() => {
     const busy: Busy[] = dayItems
       .filter((i) => i.type === 'session' || i.type === 'protected' || i.type === 'invite')
@@ -138,12 +158,18 @@ export function TodayScreen({ name, programme, relay, myTopics, syncTick, onAddS
   async function leaveOrCancel(r: Extract<Row, { kind: 'invite' }>) {
     const inv = r.invite;
     if (inv?.outgoing) {
-      await cancelInvite(relay, inv);
-      announce('Called off. Everyone invited has been told.');
+      const { told, missed } = await cancelInvite(relay, inv);
+      announce(
+        missed === 0
+          ? told === 1
+            ? 'Called off. They’ve been told.'
+            : 'Called off. Everyone invited has been told.'
+          : `Called off. ${missed === 1 ? 'One person' : `${missed} people`} couldn’t be reached; it’s gone from your day anyway.`,
+      );
     } else {
-      // Leaving one you said yes to: it just leaves your day.
+      // Leaving one you said yes to: it just leaves your day. Nothing is sent.
       await deleteScheduleItem(r.item.id);
-      if (inv) await deleteInvite(inv.id);
+      if (inv) await declineInvite(inv);
       announce('Removed from your day.');
     }
     await refresh();
@@ -160,7 +186,7 @@ export function TodayScreen({ name, programme, relay, myTopics, syncTick, onAddS
 
   async function addProtected(kind: Exclude<ProtectedKind, 'focus'>, from: number, minutes: number) {
     await putScheduleItem({
-      id: randomId(),
+      id: `protect-${kind}-${from}`, // the same block twice (a double tap) overwrites instead of duplicating
       type: 'protected',
       protectedKind: kind,
       source: 'user',
@@ -364,9 +390,11 @@ export function TodayScreen({ name, programme, relay, myTopics, syncTick, onAddS
                       <button type="button" class="button quiet" aria-pressed={!!r.item.focus} aria-label={`Focus on ${r.item.title}`} onClick={() => void toggleFocus(r.item)}>
                         Focus
                       </button>
-                      <button type="button" class="button quiet" aria-label={`Invite someone to ${r.item.title}`} onClick={() => inviteFromSession(r.item)}>
-                        Invite
-                      </button>
+                      {r.item.end > now + 2 * 60_000 && (
+                        <button type="button" class="button quiet" aria-label={`Invite someone to ${r.item.title}`} onClick={() => inviteFromSession(r.item)}>
+                          Invite
+                        </button>
+                      )}
                       <button type="button" class="button quiet" aria-label={`Remove ${r.item.title}`} onClick={() => void removeItem(r.item)}>
                         Remove
                       </button>
@@ -379,9 +407,11 @@ export function TodayScreen({ name, programme, relay, myTopics, syncTick, onAddS
                   )}
                   {r.kind === 'break' && (
                     <>
-                      <button type="button" class="button quiet" aria-label={`Invite someone to your ${r.brk.kind === 'meal' ? 'lunch' : 'breather'} at ${clock(r.brk.start)}`} onClick={() => inviteFromBreak(r.brk)}>
-                        Invite
-                      </button>
+                      {r.brk.end > now + 2 * 60_000 && (
+                        <button type="button" class="button quiet" aria-label={`Invite someone to your ${r.brk.kind === 'meal' ? 'lunch' : 'breather'} at ${clock(r.brk.start)}`} onClick={() => inviteFromBreak(r.brk)}>
+                          Invite
+                        </button>
+                      )}
                       <button type="button" class="button quiet" aria-label={`Skip ${r.brk.kind === 'meal' ? 'lunch' : 'breather'} at ${clock(r.brk.start)}`} onClick={() => void skip(r.brk)}>
                         Skip
                       </button>
@@ -506,7 +536,7 @@ function ProtectForm({
   onAdd: (kind: 'recharge' | 'off', from: number, minutes: number) => Promise<void>;
   onCancel: () => void;
 }) {
-  const slots = Array.from({ length: (21 - 7) * 4 + 1 }, (_, i) => day + (7 * 60 + i * 15) * 60_000);
+  const slots = Array.from({ length: (21 - 7) * 4 + 1 }, (_, i) => atMinutes(day, 7 * 60 + i * 15));
   const nowSlot = slots.find((s) => s > Date.now()) ?? slots[0]!;
   const [kind, setKind] = useState<'recharge' | 'off'>('recharge');
   const [from, setFrom] = useState(nowSlot);

@@ -126,7 +126,7 @@ export function ShareCodeScreen({ profile, relay, onDone }: Props) {
           Share your code
         </h2>
         <p>
-          Anyone who scans this can send you a request. You decide whether to say yes. If you don’t, they’re never told.
+          Anyone who scans this can see what you chose to share and send you a request. You decide whether to say yes. If you don’t, they’re never told.
         </p>
       </div>
 

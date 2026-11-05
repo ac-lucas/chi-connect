@@ -48,6 +48,57 @@ export function timeoutSignal(ms: number): AbortSignal | undefined {
   return c.signal;
 }
 const MAX_BOXES = 100;
+/** Largest relay reply we read. The relay caps an inbox reply at 512 KB of ciphertext. */
+const MAX_REPLY_BYTES = 1024 * 1024;
+const ID = /^[A-Za-z0-9_-]{22}$/;
+const CT = /^[A-Za-z0-9_-]{1,16384}$/;
+
+/** Read a reply body without holding more than `max` bytes. */
+async function readText(res: Response, max: number): Promise<string> {
+  if (Number(res.headers.get('Content-Length') ?? '0') > max) throw new Error('too-large');
+  if (!res.body) return res.text();
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > max) {
+      await reader.cancel();
+      throw new Error('too-large');
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let at = 0;
+  for (const c of chunks) {
+    bytes.set(c, at);
+    at += c.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
+}
+
+/**
+ * Check an inbox reply message by message. The relay is not trusted with structure either: anything malformed is
+ * dropped, and the result has no prototype, so a key like "__proto__" is just a key.
+ */
+export function cleanInbox(raw: unknown): Record<string, InboxMessage[]> {
+  const out = Object.create(null) as Record<string, InboxMessage[]>;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+  for (const [box, list] of Object.entries(raw as Record<string, unknown>)) {
+    if (!ID.test(box) || !Array.isArray(list)) continue;
+    const good: InboxMessage[] = [];
+    for (const m of list.slice(0, 200)) {
+      const r = m as Record<string, unknown> | null;
+      if (r && typeof r.id === 'string' && ID.test(r.id) && typeof r.ct === 'string' && CT.test(r.ct) && typeof r.created === 'number' && Number.isFinite(r.created)) {
+        good.push({ id: r.id, ct: r.ct, created: r.created });
+      }
+    }
+    if (good.length) out[box] = good;
+  }
+  return out;
+}
 
 export class RelayTransport implements Transport {
   readonly kind = 'relay' as const;
@@ -69,7 +120,7 @@ export class RelayTransport implements Transport {
     }
     let data: T;
     try {
-      data = (await res.json()) as T;
+      data = JSON.parse(await readText(res, MAX_REPLY_BYTES)) as T;
     } catch {
       throw new RelayError('server');
     }
@@ -88,11 +139,11 @@ export class RelayTransport implements Transport {
     if (r.status !== 201) throw new RelayError('rejected');
   }
   async inbox(boxes: Box[]) {
-    const out: Record<string, InboxMessage[]> = {};
+    const out = Object.create(null) as Record<string, InboxMessage[]>;
     for (let i = 0; i < boxes.length; i += MAX_BOXES) {
-      const r = await this.post<{ messages?: Record<string, InboxMessage[]> }>('/v1/inbox', { boxes: boxes.slice(i, i + MAX_BOXES) });
+      const r = await this.post<{ messages?: unknown }>('/v1/inbox', { boxes: boxes.slice(i, i + MAX_BOXES) });
       if (r.status !== 200) throw new RelayError('rejected');
-      Object.assign(out, r.data.messages ?? {});
+      Object.assign(out, cleanInbox(r.data?.messages));
     }
     return out;
   }
@@ -136,7 +187,12 @@ export class SimulatedTransport implements Transport {
   async claim(box: Box) {
     if (!(await this.owns(box))) throw new RelayError('taken');
   }
+  /** Tests only: treat these mailboxes as claimed by someone else (for connections built by hand). */
+  acceptMailFor(...ids: string[]) {
+    for (const id of ids) if (!this.owners.has(id)) this.owners.set(id, '\u0000someone-else');
+  }
   async send(mailboxId: string, ct: string, ttl: number) {
+    if (!this.owners.has(mailboxId)) throw new RelayError('rejected'); // same rule as the relay: claimed mailboxes only
     const list = this.messages.get(mailboxId) ?? [];
     list.push({ id: `m${++this.seq}`.padEnd(22, '0'), ct, created: this.now(), expires: this.now() + ttl * 1000 });
     this.messages.set(mailboxId, list);

@@ -12,11 +12,15 @@ export const LIMITS = {
   note: 2000,
 } as const;
 
-// C0 and C1 control characters, bidi embedding and override controls, byte order mark.
-// Zero-width joiner and non-joiner are kept: several scripts and emoji sequences need them.
-const UNSAFE = /[\u0000-\u001F\u007F-\u009F‪-‮⁦-⁩﻿]/g;
+// C0 and C1 control characters, bidi embedding, override and isolate controls, invisible marks that let two names
+// look the same (zero-width space, LRM/RLM, Arabic letter mark, word joiner and invisible operators, Mongolian vowel
+// separator), and the byte order mark. Zero-width joiner and non-joiner (U+200C, U+200D) are kept: several scripts
+// and emoji sequences need them.
+const CONTROL = /[\u0000-\u001F\u007F-\u009F]/g; // become spaces (they often separate words)
+const INVISIBLE = /[\u061C\u180E\u200B\u200E\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g; // removed outright
 
-function graphemes(s: string): string[] {
+/** Split into user-visible characters (Intl.Segmenter where available, else code points). */
+export function graphemes(s: string): string[] {
   if (typeof Intl !== 'undefined' && 'Segmenter' in Intl) {
     const seg = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
     return Array.from(seg.segment(s), (x) => x.segment);
@@ -27,7 +31,7 @@ function graphemes(s: string): string[] {
 /** Normalise, strip unsafe characters, collapse whitespace and cut to `max` visible characters. */
 export function cleanText(input: unknown, max: number): string {
   if (typeof input !== 'string') return '';
-  const s = input.normalize('NFC').replace(UNSAFE, ' ').replace(/\s+/g, ' ').trim();
+  const s = input.normalize('NFC').replace(CONTROL, ' ').replace(INVISIBLE, '').replace(/\s+/g, ' ').trim();
   const g = graphemes(s);
   return g.length > max ? g.slice(0, max).join('').trim() : s;
 }

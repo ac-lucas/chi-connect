@@ -41,6 +41,21 @@ function countingRelay() {
 const save = (pid: string) => putScheduleItem({ id: randomId(), type: 'session', source: 'user', title: pid, start: 1, end: 2, programmeSessionId: pid });
 
 describe('sharing my saved sessions', () => {
+  it('takes the list back even when the switch is flipped from an out-of-date copy', async () => {
+    const sam = real('Sam', true);
+    await putConnection(sam);
+    await save('s1');
+    const { relay, sent } = countingRelay();
+    relay.acceptMailFor(sam.mailboxId!);
+    const screenCopy = (await getConnection(sam.id))!; // held by a screen before the list went out
+    expect(await shareSessionsIfChanged(relay, 1000)).toBe(1);
+    // The screen now switches sharing off using its old copy: only that field may change.
+    const { updateConnection } = await import('../storage/db');
+    await updateConnection(screenCopy.id, { scheduleSharing: false });
+    expect(await shareSessionsIfChanged(relay, 2000)).toBe(1); // the empty list goes out
+    expect(sent).toEqual([sam.mailboxId, sam.mailboxId]);
+  });
+
   it('sends only to people I share with, once per change, and takes it back when I stop', async () => {
     const sam = real('Sam', true);
     const eve = real('Eve', false);
@@ -48,6 +63,7 @@ describe('sharing my saved sessions', () => {
     await putConnection(eve);
     await save('s1');
     const { relay, sent } = countingRelay();
+    relay.acceptMailFor(sam.mailboxId!, eve.mailboxId!);
 
     expect(await shareSessionsIfChanged(relay, 1000)).toBe(1);
     expect(sent).toEqual([sam.mailboxId]);

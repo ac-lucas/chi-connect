@@ -4,7 +4,7 @@ import type { Connection } from '../model/types';
 import type { Programme, ProgrammeSession } from '../programme/types';
 import { MAX_SHARED_SESSIONS, sendPairMessage } from '../relay/protocol';
 import type { Transport } from '../relay/transport';
-import { listAllSchedule, listConnections, putConnection } from '../storage/db';
+import { listAllSchedule, listConnections, updateConnection } from '../storage/db';
 
 /** Re-send unchanged lists now and then, in case one was missed (relay messages last a day). */
 const RESEND_MS = 12 * 60 * 60 * 1000;
@@ -38,7 +38,8 @@ export async function shareSessionsIfChanged(relay: Transport, now = Date.now())
     if (!c.scheduleSharing && c.lastSharedHash === undefined) continue; // never shared, nothing to take back
     try {
       await sendPairMessage(relay, c, { t: 'sessions', v: 1, ids: c.scheduleSharing ? mine : [] });
-      await putConnection({ ...c, lastSharedHash: want, lastSharedAt: now });
+      // Only these two fields: the record may have changed (sharing switched off) while this was sending.
+      await updateConnection(c.id, { lastSharedHash: want, lastSharedAt: now });
       sent++;
     } catch {
       // Offline: try again next sync.
@@ -49,7 +50,7 @@ export async function shareSessionsIfChanged(relay: Transport, now = Date.now())
 
 /** Someone's list arrived: replace what we had for them. */
 export async function handleSessionsMessage(c: Connection, ids: string[]): Promise<void> {
-  await putConnection({ ...c, sharedSessionIds: ids });
+  await updateConnection(c.id, { sharedSessionIds: ids });
 }
 
 /**

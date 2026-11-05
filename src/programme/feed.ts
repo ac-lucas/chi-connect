@@ -67,6 +67,8 @@ export interface CheckResult {
   programme: FeedProgramme | null;
   /** Whether a check was actually made (false when it was too soon). */
   checked: boolean;
+  /** A revision that was downloaded but can't be used: remember it and don't download it again. */
+  unusable?: { edition: string; revision: number };
 }
 
 /**
@@ -76,30 +78,43 @@ export interface CheckResult {
 export async function checkFeed(
   held: Pick<FeedProgramme, 'edition' | 'revision'> | null,
   lastCheckedAt: number,
-  { now = Date.now(), fetchImpl = fetch as Fetch, base = FEED_BASE } = {},
+  {
+    now = Date.now(),
+    fetchImpl = fetch as Fetch,
+    base = FEED_BASE,
+    skip = undefined as { edition: string; revision: number } | undefined,
+  } = {},
 ): Promise<CheckResult> {
   if (now - lastCheckedAt < POLL_MS) return { programme: null, checked: false };
   for (const edition of EDITIONS) {
     let version: Record<string, unknown>;
     try {
       const res = await fetchImpl(`${base}/${edition}/version.json?t=${now}`, { cache: 'no-store', credentials: 'omit', signal: timeoutSignal(TIMEOUT_MS) });
-      if (res.status === 404) continue; // this edition isn't published yet
-      if (!res.ok) return { programme: null, checked: true };
+      if (!res.ok) continue; // not published yet (404) or not answering: try the next edition
       version = (await readJson(res, MAX_VERSION_BYTES)) as Record<string, unknown>;
     } catch {
-      return { programme: null, checked: true }; // offline or blocked: keep what we have
+      continue; // offline, blocked or garbled: try the next edition, else keep what we have
     }
     const revision = version?.revision;
     if (typeof revision !== 'number' || !Number.isSafeInteger(revision) || revision < 0) return { programme: null, checked: true };
     if (held && held.edition === edition && held.revision === revision) return { programme: null, checked: true };
+    // Already found unusable: don't download it again until the revision moves on.
+    if (skip && skip.edition === edition && skip.revision === revision) return { programme: null, checked: true };
     if (!isRevisionUrl(version.revision_url, edition, base)) return { programme: null, checked: true };
+    let res: Response;
     try {
       // Revision files never change once published, so normal HTTP caching is fine here.
-      const res = await fetchImpl(version.revision_url, { credentials: 'omit', signal: timeoutSignal(TIMEOUT_MS) });
-      if (!res.ok) return { programme: null, checked: true };
-      return { programme: transformFeed(await readJson(res, MAX_FEED_BYTES), edition, revision), checked: true };
+      res = await fetchImpl(version.revision_url, { credentials: 'omit', signal: timeoutSignal(TIMEOUT_MS) });
     } catch {
-      return { programme: null, checked: true };
+      return { programme: null, checked: true }; // network trouble: worth trying again later
+    }
+    if (!res.ok) return { programme: null, checked: true };
+    try {
+      const programme = transformFeed(await readJson(res, MAX_FEED_BYTES), edition, revision);
+      if (!programme.sessions.length) return { programme: null, checked: true, unusable: { edition, revision } };
+      return { programme, checked: true };
+    } catch {
+      return { programme: null, checked: true, unusable: { edition, revision } }; // too big or not a programme
     }
   }
   return { programme: null, checked: true };

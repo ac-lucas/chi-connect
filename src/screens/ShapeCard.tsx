@@ -70,7 +70,15 @@ export function ShapeCardView({ card, context, onClose }: { card: ShapeCard; con
     const wake = async () => {
       try {
         const wl = (navigator as Navigator & { wakeLock?: { request(type: 'screen'): Promise<{ release(): Promise<void> }> } }).wakeLock;
-        if (wl && open && document.visibilityState === 'visible') lock = await wl.request('screen');
+        if (!wl || !open || document.visibilityState !== 'visible') return;
+        const got = await wl.request('screen');
+        if (!open) {
+          void got.release().catch(() => {}); // the card closed while asking: let it go straight away
+          return;
+        }
+        const previous = lock;
+        lock = got;
+        void previous?.release().catch(() => {}); // never hold two
       } catch {
         // Not allowed or not supported: the card still works, the screen may just dim.
       }

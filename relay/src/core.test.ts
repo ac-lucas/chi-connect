@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { mailboxIdFor as appMailboxIdFor } from '../../src/relay/crypto';
-import { LIMITS, mailboxIdFor, RateLimiter, RelayCore, type RelayResponse, type Sql } from './core';
+import { clientPrefix, LIMITS, mailboxIdFor, RateLimiter, RelayCore, type RelayResponse, type Sql } from './core';
 
 function memorySql(): Sql {
   const db = new DatabaseSync(':memory:');
@@ -89,12 +89,39 @@ describe('mailboxes and messages', () => {
     expect(errorOf(await call('/v1/mailboxes/claim', { id: id('o'), token: id('x') }))).toBe('taken');
   });
 
-  it('claims an unclaimed mailbox on first read', async () => {
-    const { box } = await owned('t');
+  it('only takes mail for a mailbox someone has claimed (first read claims it)', async () => {
+    const { box, token } = await owned('t');
+    expect(errorOf(await call(`/v1/mailboxes/${box}/messages`, { ct: 'abc', ttl: 60 }))).toBe('no-such-mailbox');
+    await call('/v1/inbox', { boxes: [{ id: box, token }] }); // first read claims it
     await call(`/v1/mailboxes/${box}/messages`, { ct: 'abc', ttl: 60 });
-    const first = await call('/v1/inbox', { boxes: [{ id: box, token: id('t') }] });
+    const first = await call('/v1/inbox', { boxes: [{ id: box, token }] });
     expect(Object.keys((first.body as { messages: object }).messages)).toEqual([box]);
     expect(errorOf(await call('/v1/mailboxes/claim', { id: box, token: id('x') }))).toBe('taken');
+  });
+
+  it('caps one inbox reply and says there is more', async () => {
+    const boxes = [];
+    for (const c of 'abcdefghijklm') {
+      const { box, token } = await owned(c);
+      await call('/v1/mailboxes/claim', { id: box, token });
+      for (let i = 0; i < 10; i++) await call(`/v1/mailboxes/${box}/messages`, { ct: 'a'.repeat(LIMITS.ctChars), ttl: 60 }, NOW, `s${c}${i}`);
+      boxes.push({ id: box, token });
+    }
+    const r = (await call('/v1/inbox', { boxes })).body as { messages: Record<string, { ct: string }[]>; more?: boolean };
+    const chars = Object.values(r.messages).flat().reduce((n, m) => n + m.ct.length, 0);
+    expect(chars).toBeLessThanOrEqual(LIMITS.inboxReplyChars);
+    expect(r.more).toBe(true);
+  });
+
+  it('limits how fast one mailbox can be sent to, from any number of addresses', async () => {
+    const { box, token } = await owned('t');
+    await call('/v1/mailboxes/claim', { id: box, token });
+    const statuses: number[] = [];
+    for (let i = 0; i < 70; i++) {
+      statuses.push((await call(`/v1/mailboxes/${box}/messages`, { ct: 'abc', ttl: 60 }, NOW, `addr${i}`)).status);
+      if (i % 40 === 39) await call('/v1/inbox/ack', { boxes: [{ id: box, token, messageIds: [] }] });
+    }
+    expect(statuses.filter((s) => s === 429).length).toBeGreaterThan(0);
   });
 
   it('expires messages after their lifetime', async () => {
@@ -105,7 +132,8 @@ describe('mailboxes and messages', () => {
   });
 
   it('caps waiting messages per mailbox', async () => {
-    const box = id('e');
+    const { box, token } = await owned('e');
+    await call('/v1/mailboxes/claim', { id: box, token });
     for (let i = 0; i < LIMITS.messagesPerMailbox; i++) {
       expect((await call(`/v1/mailboxes/${box}/messages`, { ct: 'abc', ttl: 60 }, NOW, `sender${i}`)).status).toBe(201);
     }
@@ -155,16 +183,32 @@ describe('six-digit codes', () => {
 
   it('limits guessing per client', async () => {
     const statuses: number[] = [];
-    for (let i = 0; i < 12; i++) statuses.push((await call('/v1/codes/redeem', { code: String(100000 + i) }, NOW, 'guesser')).status);
-    expect(statuses.slice(0, 10).every((s) => s === 404)).toBe(true);
-    expect(statuses.slice(10)).toEqual([429, 429]);
+    for (let i = 0; i < 32; i++) statuses.push((await call('/v1/codes/redeem', { code: String(100000 + i) }, NOW, 'guesser')).status);
+    expect(statuses.slice(0, 30).every((s) => s === 404)).toBe(true);
+    expect(statuses.slice(30)).toEqual([429, 429]);
     // A new window allows more.
     expect((await call('/v1/codes/redeem', { code: '999999' }, NOW + 10 * 60 * 1000, 'guesser')).status).toBe(404);
   });
 
   it('limits code creation per client', async () => {
-    for (let i = 0; i < 10; i++) expect((await call('/v1/codes', { code: String(200000 + i), ct: 'abc' }, NOW, 'maker')).status).toBe(201);
+    for (let i = 0; i < 60; i++) expect((await call('/v1/codes', { code: String(200000 + i), ct: 'abc' }, NOW, 'maker')).status).toBe(201);
     expect((await call('/v1/codes', { code: '300000', ct: 'abc' }, NOW, 'maker')).status).toBe(429);
+  });
+
+  it('keeps a redeemed code reserved, so nobody who overheard it can put up their own', async () => {
+    const code = '424242';
+    await call('/v1/codes', { code, ct: 'cmVhbA' }, NOW, 'owner');
+    expect((await call('/v1/codes/redeem', { code }, NOW, 'eavesdropper')).body).toEqual({ ct: 'cmVhbA' });
+    expect(errorOf(await call('/v1/codes', { code, ct: 'ZmFrZQ' }, NOW + 1000, 'eavesdropper'))).toBe('taken');
+    expect(errorOf(await call('/v1/codes/redeem', { code }, NOW + 2000, 'victim'))).toBe('no-such-code');
+    // Once its time is up the code is free again.
+    expect((await call('/v1/codes', { code, ct: 'bmV3' }, NOW + LIMITS.codeTtlMs + 1, 'someone')).status).toBe(201);
+  });
+
+  it('stops online guessing across all clients once misses pass a shared budget', async () => {
+    let refused = 0;
+    for (let i = 0; i < 2100; i++) if ((await call('/v1/codes/redeem', { code: String(500000 + i) }, NOW, `g${i % 300}`)).status === 429) refused++;
+    expect(refused).toBeGreaterThan(0);
   });
 });
 
@@ -181,12 +225,22 @@ describe('purge', () => {
 });
 
 describe('rate limiter', () => {
-  it('stays bounded under a flood of new clients and recovers when the window passes', () => {
+  it('stays bounded under a flood of new clients without locking anyone out', () => {
     const limiter = new RateLimiter();
     let refused = 0;
-    for (let i = 0; i < 210_000; i++) if (!limiter.hit(`ip${i}`, 'any', NOW)) refused++;
-    expect(refused).toBe(10_000);
-    expect(limiter.hit('ip0', 'any', NOW)).toBe(true); // known clients keep their budget
-    expect(limiter.hit('newcomer', 'any', NOW + 10 * 60 * 1000)).toBe(true);
+    for (let i = 0; i < 250_000; i++) if (!limiter.hit(`ip${i}`, 'any', NOW)) refused++;
+    expect(refused).toBe(0);
+    expect(limiter.tracked).toBeLessThanOrEqual(200_000);
+    expect(limiter.hit('newcomer', 'any', NOW)).toBe(true);
+  });
+
+  it('treats one IPv6 /64 as one client, and IPv4 addresses as themselves', () => {
+    expect(clientPrefix('203.0.113.7')).toBe('203.0.113.7');
+    expect(clientPrefix('::ffff:203.0.113.7')).toBe('203.0.113.7');
+    const a = clientPrefix('2001:db8:aa:1:1111:2222:3333:4444');
+    expect(clientPrefix('2001:0db8:00aa:0001:ffff::1')).toBe(a);
+    expect(clientPrefix('2001:db8:aa:1::')).toBe(a);
+    expect(clientPrefix('2001:db8:aa:2::1')).not.toBe(a);
+    expect(clientPrefix('2001:db8::1')).toBe('2001:db8:0:0::/64');
   });
 });

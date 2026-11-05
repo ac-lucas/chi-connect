@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useRef, useState } from 'preact/hooks';
 import type { ConnectPayload } from '../connect/payload';
 import { toSharedProfile } from '../model/profile';
 import type { Profile } from '../model/types';
@@ -25,7 +25,10 @@ export function RequestScreen({ profile, theirs, relay, onSent, onCancel }: Prop
   const [problem, setProblem] = useState<string | null>(null);
   const name = theirs.profile.displayName;
 
+  const inFlight = useRef(false);
   async function send() {
+    if (inFlight.current) return; // a double tap before the screen updates must not send two requests
+    inFlight.current = true;
     setSending(true);
     setProblem(null);
     try {
@@ -44,6 +47,7 @@ export function RequestScreen({ profile, theirs, relay, onSent, onCancel }: Prop
       setProblem(msg);
       announce(msg);
       setSending(false);
+      inFlight.current = false;
     }
   }
 

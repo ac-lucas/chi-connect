@@ -4,7 +4,15 @@ import { isOver, shiftToAnchor } from './preview';
 import type { Programme } from './types';
 
 const BASE = 'https://feed.example/data';
-const programmeFile = { schemeVersion: 7, conference: { name: 'Example 2026', year: 2026 }, sessions: [] };
+const T0 = 1_776_157_200_000;
+const programmeFile = {
+  schemeVersion: 7,
+  conference: { name: 'Example 2026', year: 2026 },
+  timeSlots: [{ id: 1, startDate: T0, endDate: T0 + 5_400_000 }],
+  contentTypes: [{ id: 20, name: 'Paper' }],
+  sessions: [{ id: 100, name: 'Touch and feel', typeId: 20, timeSlotId: 1 }],
+};
+const emptyFile = { schemeVersion: 7, conference: { name: 'Example 2026', year: 2026 }, sessions: [] };
 
 function fakeFetch(routes: Record<string, { status?: number; body: unknown }>) {
   const calls: string[] = [];
@@ -36,6 +44,28 @@ describe('checkFeed', () => {
     expect(r.programme?.revision).toBe(1);
     expect(calls[0]).toBe(`${BASE}/chi2027/version.json?t=1000000000000`);
     expect(calls[1]).toBe(`${BASE}/chi2026/version.json?t=1000000000000`);
+  });
+
+  it("remembers a revision it can't use, and skips it until the revision moves on", async () => {
+    const routes = {
+      [`${BASE}/chi2027/version.json`]: { body: version('chi2027', 3) },
+      [`${BASE}/chi2027/revisions/003.json`]: { body: emptyFile },
+    };
+    const first = fakeFetch(routes);
+    const r = await checkFeed(null, 0, { now: 1e12, fetchImpl: first.f, base: BASE });
+    expect(r.unusable).toEqual({ edition: 'chi2027', revision: 3 });
+    const again = fakeFetch(routes);
+    await checkFeed(null, 0, { now: 1e12 + POLL_MS, fetchImpl: again.f, base: BASE, skip: r.unusable });
+    expect(again.calls.some((c) => c.includes('/revisions/'))).toBe(false); // not downloaded again
+  });
+
+  it('falls back to 2026 when 2027 errors, not only when it is missing', async () => {
+    const { f } = fakeFetch({
+      [`${BASE}/chi2027/version.json`]: { status: 503, body: {} },
+      [`${BASE}/chi2026/version.json`]: { body: version('chi2026', 1) },
+      [`${BASE}/chi2026/revisions/001.json`]: { body: programmeFile },
+    });
+    expect((await checkFeed(null, 0, { now: 1e12, fetchImpl: f, base: BASE })).programme?.edition).toBe('chi2026');
   });
 
   it('only downloads when the revision moves', async () => {

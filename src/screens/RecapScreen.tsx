@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { Programme } from '../programme/types';
-import { startOfDay } from '../programme/programme';
+import { nextDay, startOfDay } from '../programme/programme';
 import { planDay, type Busy } from '../schedule/breaks';
 import { energyToday } from '../schedule/energy';
 import { buildRecap, recapText, type Recap } from '../schedule/recap';
@@ -31,7 +31,7 @@ export function RecapScreen({ programme, onBack }: { programme: Programme; onBac
       let breathers = 0;
       for (const d of days) {
         const busy: Busy[] = items
-          .filter((i) => i.start >= d && i.start < d + 86_400_000 && (i.type === 'session' || i.type === 'protected' || i.type === 'invite'))
+          .filter((i) => i.start >= d && i.start < nextDay(d) && (i.type === 'session' || i.type === 'protected' || i.type === 'invite'))
           .map((i) => ({ id: i.id, start: i.start, end: i.end, kind: i.type === 'session' ? 'session' : i.type === 'protected' ? 'protected' : 'meetup' }));
         breathers += planDay(busy, d, level, undefined, skipped).breaks.filter((b) => b.end < Date.now()).length;
       }

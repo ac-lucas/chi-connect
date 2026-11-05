@@ -3,7 +3,7 @@ import type { Connection, Tag } from '../model/types';
 import { NotesSection } from './NotesSection';
 import { approveRequest } from '../relay/protocol';
 import { RelayError, type Transport } from '../relay/transport';
-import { listAllSchedule, putConnection, removeConnection } from '../storage/db';
+import { listAllSchedule, removeConnection, updateConnection } from '../storage/db';
 import type { Programme } from '../programme/types';
 import { dayLabel, timeRange } from '../programme/programme';
 import { demoSessionIds, shareSessionsIfChanged } from '../schedule/overlap';
@@ -36,7 +36,7 @@ export function PersonScreen({ connection: c, myTags, justConnected, relay, prog
   const both = programme ? programme.sessions.filter((s) => mySessionIds.includes(s.id) && theirIds.includes(s.id)) : [];
 
   async function toggleSharing(on: boolean) {
-    await putConnection({ ...c, scheduleSharing: on });
+    await updateConnection(c.id, { scheduleSharing: on }); // never write the screen's (possibly stale) copy back
     onChanged();
     announce(on ? `${name} can now see which sessions you’ve saved.` : `Stopped sharing your sessions with ${name}.`);
     if (relay && !c.demo) void shareSessionsIfChanged(relay).catch(() => {});
@@ -64,7 +64,8 @@ export function PersonScreen({ connection: c, myTags, justConnected, relay, prog
     setBusy(true);
     setProblem(null);
     try {
-      await putConnection(await approveRequest(relay, c));
+      const done = await approveRequest(relay, c);
+      await updateConnection(c.id, { state: done.state, connectedAt: done.connectedAt, myMailboxId: done.myMailboxId, myMailboxToken: done.myMailboxToken });
       announce(`You’re connected with ${name}.`);
       onChanged();
     } catch (e) {

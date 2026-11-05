@@ -8,6 +8,8 @@ import {
   introPayload,
   newIntro,
   openHello,
+  clampSentAt,
+  MAX_NEW_REQUESTS_PER_SYNC,
   redeemSixDigitCode,
   sendPairMessage,
   sendRequest,
@@ -49,6 +51,7 @@ describe('one-way connect through the relay', () => {
 
     // A shows a one-way code; B reads it and sends a request.
     const intro = await newIntro();
+    await relay.claim({ id: intro.mailboxId, token: intro.mailboxToken });
     a.introList.push(intro);
     await b.put(await sendRequest(relay, introPayload(a.me, intro), b.me));
     expect(b.only().state).toBe('pending-sent');
@@ -79,6 +82,7 @@ describe('one-way connect through the relay', () => {
     const a = new Device(ana);
     const b = new Device(sam);
     const intro = await newIntro();
+    await relay.claim({ id: intro.mailboxId, token: intro.mailboxToken });
     a.introList.push(intro);
     await b.put(await sendRequest(relay, introPayload(a.me, intro), b.me));
     await syncOnce(relay, a);
@@ -91,6 +95,7 @@ describe('one-way connect through the relay', () => {
     const relay = new SimulatedTransport();
     const a = new Device(ana);
     const intro = await newIntro();
+    await relay.claim({ id: intro.mailboxId, token: intro.mailboxToken });
     a.introList.push(intro);
     await relay.send(intro.mailboxId, 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', 60);
     // A request made for a different intro, delivered to this mailbox.
@@ -104,6 +109,7 @@ describe('one-way connect through the relay', () => {
     const a = new Device(ana);
     const b = new Device(sam);
     const intro = await newIntro();
+    await relay.claim({ id: intro.mailboxId, token: intro.mailboxToken });
     a.introList.push(intro);
     await b.put(await sendRequest(relay, introPayload(a.me, intro), b.me));
     await syncOnce(relay, a);
@@ -119,6 +125,7 @@ describe('invites between connected pairs', () => {
     const a = new Device(ana);
     const b = new Device(sam);
     const intro = await newIntro();
+    await relay.claim({ id: intro.mailboxId, token: intro.mailboxToken });
     a.introList.push(intro);
     await b.put(await sendRequest(relay, introPayload(a.me, intro), b.me));
     await syncOnce(relay, a);
@@ -152,6 +159,7 @@ describe('keys', () => {
   it('only the person who showed the code can open a request to it', async () => {
     const relay = new SimulatedTransport();
     const intro = await newIntro();
+    await relay.claim({ id: intro.mailboxId, token: intro.mailboxToken });
     await sendRequest(relay, introPayload(ana, intro), sam);
     const [msg] = (await relay.inbox([{ id: intro.mailboxId, token: intro.mailboxToken }]))[intro.mailboxId]!;
     // Someone who saw the code has its nonce and public key, but not its private key.
@@ -161,8 +169,9 @@ describe('keys', () => {
   });
 
   it('refuses a request whose inner code carries a different key than it was sealed with', async () => {
-    const intro = await newIntro();
     const relay = new SimulatedTransport();
+    const intro = await newIntro();
+    await relay.claim({ id: intro.mailboxId, token: intro.mailboxToken });
     // Sam seals the hello properly, then someone swaps the clear key prefix for another valid key.
     await sendRequest(relay, introPayload(ana, intro), sam);
     const [msg] = (await relay.inbox([{ id: intro.mailboxId, token: intro.mailboxToken }]))[intro.mailboxId]!;
@@ -174,9 +183,48 @@ describe('keys', () => {
     const relay = new SimulatedTransport();
     const a = new Device(ana);
     const { publicKey: _p, privateKey: _k, ...old } = await newIntro();
+    await relay.claim({ id: old.mailboxId, token: old.mailboxToken });
     a.introList.push(old);
     await relay.send(old.mailboxId, 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', 60);
     expect((await syncOnce(relay, a)).newRequests).toEqual([]);
+  });
+});
+
+describe('limits on requests', () => {
+  it('refuses requests sent after the code stopped working', async () => {
+    const t0 = 1_800_000_000_000;
+    let clock = t0;
+    const relay = new SimulatedTransport(() => clock);
+    const a = new Device(ana);
+    const intro = await newIntro(t0);
+    await relay.claim({ id: intro.mailboxId, token: intro.mailboxToken });
+    a.introList.push(intro);
+    clock = intro.expiresAt + 60 * 60 * 1000; // an hour after the code expired
+    await sendRequest(relay, introPayload(a.me, intro), sam, clock);
+    expect((await syncOnce(relay, a, clock)).newRequests).toEqual([]);
+  });
+
+  it('caps a flood of requests to one code', async () => {
+    const relay = new SimulatedTransport();
+    const a = new Device(ana);
+    const intro = await newIntro();
+    await relay.claim({ id: intro.mailboxId, token: intro.mailboxToken });
+    a.introList.push(intro);
+    for (let i = 0; i < 25; i++) await sendRequest(relay, introPayload(a.me, intro), { displayName: `Spam ${i}` });
+    const r = await syncOnce(relay, a);
+    expect(r.newRequests).toHaveLength(MAX_NEW_REQUESTS_PER_SYNC);
+    expect(await relay.inbox([{ id: intro.mailboxId, token: intro.mailboxToken }])).toEqual({}); // the rest cleared
+  });
+
+  it('refuses a request that points back at our own mailbox', async () => {
+    const relay = new SimulatedTransport();
+    const intro = await newIntro();
+    await relay.claim({ id: intro.mailboxId, token: intro.mailboxToken });
+    await sendRequest(relay, introPayload(ana, intro), sam);
+    const [msg] = (await relay.inbox([{ id: intro.mailboxId, token: intro.mailboxToken }]))[intro.mailboxId]!;
+    expect(await openHello(intro, msg!.ct)).not.toBeNull(); // the real one opens
+    expect(clampSentAt(Number.NaN, 5)).toBe(5);
+    expect(clampSentAt(10, 5)).toBe(5); // never in the future
   });
 });
 
@@ -188,6 +236,7 @@ describe('relay hygiene', () => {
     const a = new Device(ana);
     const b = new Device(sam);
     const intro = await newIntro(t0);
+    await relay.claim({ id: intro.mailboxId, token: intro.mailboxToken });
     a.introList.push(intro);
     await b.put(await sendRequest(relay, introPayload(a.me, intro), b.me, t0));
     clock = t0 + 21 * 60 * 60 * 1000; // B's code inside the hello expired at 20 hours; the message lives 24
@@ -199,6 +248,7 @@ describe('relay hygiene', () => {
     const a = new Device(ana);
     const b = new Device(sam);
     const intro = await newIntro();
+    await relay.claim({ id: intro.mailboxId, token: intro.mailboxToken });
     a.introList.push(intro);
     await b.put(await sendRequest(relay, introPayload(a.me, intro), b.me));
     const box = { id: b.only().myMailboxId!, token: b.only().myMailboxToken! };
@@ -211,6 +261,7 @@ describe('relay hygiene', () => {
   it('makes mailbox IDs that only their own token can claim', async () => {
     const relay = new SimulatedTransport();
     const intro = await newIntro();
+    await relay.claim({ id: intro.mailboxId, token: intro.mailboxToken });
     await expect(relay.claim({ id: intro.mailboxId, token: 'x'.repeat(22) })).rejects.toThrow('taken');
     await expect(relay.claim({ id: intro.mailboxId, token: intro.mailboxToken })).resolves.toBeUndefined();
   });
@@ -220,6 +271,7 @@ describe('six-digit codes', () => {
   it('swaps a code for the connect code once', async () => {
     const relay = new SimulatedTransport();
     const intro = await newIntro();
+    await relay.claim({ id: intro.mailboxId, token: intro.mailboxToken });
     const connectCode = await encodeCode(introPayload(ana, intro));
     const { code } = await createSixDigitCode(relay, connectCode);
     expect(code).toMatch(/^\d{6}$/);

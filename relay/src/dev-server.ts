@@ -3,7 +3,7 @@
 // Not for production: no TLS, data is lost on restart.
 import { createServer } from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
-import { RelayCore, type Sql } from './core.ts';
+import { clientPrefix, RelayCore, type Sql } from './core.ts';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const ALLOWED = new Set(['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:4173', 'http://127.0.0.1:4173']);
@@ -56,7 +56,7 @@ createServer((req, res) => {
       method: req.method ?? 'GET',
       path: new URL(req.url ?? '/', 'http://localhost').pathname,
       body,
-      clientKey: req.socket.remoteAddress ?? 'local',
+      clientKey: clientPrefix(req.socket.remoteAddress ?? 'local'),
     });
     reply(out.status, out.body);
   });

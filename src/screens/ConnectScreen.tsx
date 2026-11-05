@@ -7,7 +7,7 @@ import { QrCode } from '../connect/QrCode';
 import { QrScanner } from '../connect/QrScanner';
 import { randomId } from '../model/ids';
 import { newBox } from '../relay/protocol';
-import type { Box } from '../relay/transport';
+import type { Box, Transport } from '../relay/transport';
 import { toSharedProfile } from '../model/profile';
 import type { Connection, Profile } from '../model/types';
 import { putConnection } from '../storage/db';
@@ -20,6 +20,8 @@ interface Props {
   profile: Profile;
   /** A code that arrived in the page link (someone scanned ours with their phone camera). */
   initialCode?: string;
+  /** The relay, if this build has one: our mailbox is claimed as soon as the code is shown. */
+  relay?: Transport | null;
   /** Called with a one-way code (shared at a distance). Omitted when there is no relay. */
   onOneWayCode?: (theirs: ConnectPayload) => void;
   onConnected: (connectionId: string) => void;
@@ -36,7 +38,8 @@ interface Mine {
   leftOut: string[];
 }
 
-const PROBLEMS: Record<DecodeProblem | 'own' | 'regular', string> = {
+const PROBLEMS: Record<DecodeProblem | 'own' | 'regular' | 'not-ready', string> = {
+  'not-ready': 'Your own code isn’t ready, so face-to-face can’t finish here. Reload Pebble and try again.',
   'too-long': 'That isn’t a Pebble code.',
   'not-a-code': 'That isn’t a Pebble code.',
   unreadable: 'Couldn’t read that code. Ask them to open a fresh one.',
@@ -51,7 +54,7 @@ function appBase(): string {
   return location.href.split('#')[0]!;
 }
 
-export function ConnectScreen({ profile, initialCode, onOneWayCode, onConnected, onCancel }: Props) {
+export function ConnectScreen({ profile, relay, initialCode, onOneWayCode, onConnected, onCancel }: Props) {
   const heading = useScreenHeading<HTMLHeadingElement>();
   const [mine, setMine] = useState<Mine | null>(null);
   const [view, setView] = useState<'show' | 'scan'>('show');
@@ -84,6 +87,8 @@ export function ConnectScreen({ profile, initialCode, onOneWayCode, onConnected,
     }
     async function makeOnce() {
       const box = await newBox();
+      // Claim our mailbox now: the relay only takes mail for claimed mailboxes. Fine if offline; sync claims it later.
+      relay?.claim(box).catch(() => {});
       const key = await newPairKey();
       const payload: ConnectPayload = {
         mode: 'f',
@@ -111,41 +116,42 @@ export function ConnectScreen({ profile, initialCode, onOneWayCode, onConnected,
   }, [profile]);
 
   async function accept(text: string): Promise<boolean> {
-    if (!mine) return false;
     if (text === lastBad.current) return false; // same bad code still in view: stay quiet
     try {
       const p = await decodeCode(text);
-      if (p.nonce === mine.payload.nonce) throw new Error('own');
+      if (mine && p.nonce === mine.payload.nonce) throw new Error('own');
+      // One-way codes don't need our own code at all, so they work even if making ours failed.
       if (p.mode !== 'f') {
         if (!onOneWayCode) throw new Error('regular');
         onOneWayCode(p);
         return true;
       }
+      if (!mine) throw new Error('not-ready');
+      // A code that points at our own mailbox is someone replaying our code with a new nonce: refuse it.
+      if (p.mailboxId && p.mailboxId === mine.box.id) throw new Error('own');
       lastBad.current = null;
       setProblem(null);
       setTheirs(p);
       setMatch(await cardFromSeed(matchSeed(mine.payload, p)));
-      announce(`Got ${p.profile.displayName}’s code.`);
+      // Focusing the heading reads it ("Got X's code"); no separate announcement, or it would be read twice.
       setTimeout(() => resultHeading.current?.focus(), 0);
       return true;
     } catch (e) {
       lastBad.current = text;
       const key = e instanceof DecodeError ? e.problem : (e as Error).message;
-      const msg = PROBLEMS[key as keyof typeof PROBLEMS] ?? PROBLEMS.unreadable;
-      setProblem(msg);
-      announce(msg);
+      setProblem(PROBLEMS[key as keyof typeof PROBLEMS] ?? PROBLEMS.unreadable); // shown in a role=alert: read once
       return false;
     }
   }
 
-  // A code that came in through the page link: read it as soon as our own code exists.
+  // A code that came in through the page link: read it as soon as our own code exists (or failed to).
   const usedInitial = useRef(false);
   useEffect(() => {
-    if (initialCode && mine && !usedInitial.current) {
+    if (initialCode && (mine || makeFailed) && !usedInitial.current) {
       usedInitial.current = true;
       void accept(initialCode);
     }
-  }, [initialCode, mine]);
+  }, [initialCode, mine, makeFailed]);
 
   async function connect() {
     if (!mine || !theirs) return;
@@ -199,7 +205,7 @@ export function ConnectScreen({ profile, initialCode, onOneWayCode, onConnected,
       <div class="qr-wrap">
         <QrCode text={mine.link} label={`Your connect code. It works for ${minutes} minutes.`} />
       </div>
-      <p class="hint">Works for {minutes} minutes. Holds only what you chose to share, plus a one-time pairing number.</p>
+      <p class="hint">Works for {minutes} minutes. Holds only what you chose to share, plus a one-time pairing number. Anyone who sees it can read those.</p>
       {mine.leftOut.length > 0 && (
         <p class="hint">
           Left out to keep the code easy to scan: {mine.leftOut.join(', ')}. You can share those once you’re connected.

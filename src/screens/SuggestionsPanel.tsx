@@ -3,7 +3,7 @@ import { pickLine, talkOpeners } from '../data/icebreakers';
 import { knownTagById } from '../model/tags';
 import { randomId } from '../model/ids';
 import type { Connection, EnergyLevel, ScheduleItem } from '../model/types';
-import { timeRange, timeRangeSpoken, dayKey } from '../programme/programme';
+import { atMinutes, dayKey, nextDay, timeRange, timeRangeSpoken } from '../programme/programme';
 import type { Programme } from '../programme/types';
 import type { Busy } from '../schedule/breaks';
 import { alsoGoing, namesList } from '../schedule/overlap';
@@ -53,10 +53,9 @@ export function SuggestionsPanel({ programme, items, connections, level, day, is
 
   const now = Date.now();
   const saved = items.filter((i) => i.type === 'session');
-  const daySaved = saved.filter((i) => i.start >= day && i.start < day + 86_400_000);
+  const daySaved = saved.filter((i) => i.start >= day && i.start < nextDay(day));
   const quietNow = quiet || snoozeUntil > now || (isToday && inSomething(items, now));
   const seenToday = dismissed.filter((k) => k.startsWith(`seen:${dayKey(now)}:`)).length;
-  const underCap = seenToday < NUDGE_CAP[level];
 
   async function hide(key: string, message?: string) {
     await dismiss(key);
@@ -81,9 +80,11 @@ export function SuggestionsPanel({ programme, items, connections, level, day, is
   const topic = endedSession?.topics[0] ? (knownTagById(endedSession.topics[0])?.label ?? null) : null;
   const talkKey = ended ? `talk:${ended.id}` : '';
   const nudgeKey = ended ? `nudge:${ended.id}` : '';
+  const seenKey = ended ? `seen:${dayKey(now)}:${ended.id}` : '';
+  // Under the daily cap, or this one already counted (it was shown): counting it must not hide it again.
+  const underCap = seenToday < NUDGE_CAP[level] || (!!seenKey && dismissed.includes(seenKey));
   const showTalk = !!ended && going.length > 0 && !dismissed.includes(talkKey) && !quietNow && underCap;
   const showNudge = !!ended && going.length === 0 && !dismissed.includes(nudgeKey) && !quietNow && underCap;
-  const seenKey = ended ? `seen:${dayKey(now)}:${ended.id}` : '';
   useEffect(() => {
     if ((showTalk || showNudge) && seenKey && !dismissed.includes(seenKey)) void dismiss(seenKey).then(load); // counts towards the daily cap
   }, [showTalk, showNudge, seenKey]);
@@ -91,12 +92,13 @@ export function SuggestionsPanel({ programme, items, connections, level, day, is
   // F15: wildcard, one a day, when Charged and there's a free gap.
   const wildKey = `wildcard:${dayKey(day)}`;
   let wildcard: ReturnType<typeof pickWildcard> = null;
-  if (level === 'charged' && !quiet && !dismissed.includes(wildKey) && !daySaved.some((s) => s.fromWildcard)) {
+  // Snooze and "not during a session" apply here too (NUD-2), not just quiet mode.
+  if (level === 'charged' && !quietNow && !dismissed.includes(wildKey) && !daySaved.some((s) => s.fromWildcard)) {
     const busy: Busy[] = items
-      .filter((i) => i.start >= day && i.start < day + 86_400_000 && i.type !== 'catch-up')
+      .filter((i) => i.start >= day && i.start < nextDay(day) && i.type !== 'catch-up')
       .map((i) => ({ id: i.id, start: i.start, end: i.end, kind: i.type === 'session' ? 'session' : i.type === 'protected' ? 'protected' : 'meetup' }));
-    const from = isToday ? Math.max(now, day + 8 * 60 * MIN) : day + 8 * 60 * MIN;
-    const lastEnd = Math.max(day + 18 * 60 * MIN, ...busy.map((b) => b.end));
+    const from = isToday ? Math.max(now, atMinutes(day, 8 * 60)) : atMinutes(day, 8 * 60);
+    const lastEnd = Math.max(atMinutes(day, 18 * 60), ...busy.map((b) => b.end));
     const gaps = freeGaps([...busy, { id: 'end', start: lastEnd, end: lastEnd + MIN, kind: 'session' }], from, 30);
     wildcard = pickWildcard(programme, gaps, myTopics, new Set(saved.map((s) => s.programmeSessionId ?? '')));
   }

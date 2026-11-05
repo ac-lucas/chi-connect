@@ -2,9 +2,9 @@ import { useEffect, useState } from 'preact/hooks';
 import { PLACES, PLACE_TYPE_LABELS } from '../data/places';
 import { LIMITS_INVITE } from '../relay/invites';
 import { cleanText } from '../model/text';
-import type { Connection, InviteKind, MeetingSpot } from '../model/types';
+import type { Connection, Invite, InviteKind, MeetingSpot } from '../model/types';
 import { timeRange, timeRangeSpoken } from '../programme/programme';
-import { KIND_INFO, sendInvite } from '../schedule/invites';
+import { deliverInvite, KIND_INFO, sendInvite } from '../schedule/invites';
 import type { Transport } from '../relay/transport';
 import { listConnections } from '../storage/db';
 import { announce } from '../ui/announce';
@@ -33,6 +33,8 @@ interface Props {
 }
 
 const ARRIVE_EARLY_MS = 5 * 60_000;
+/** An invite starts at least this far from now, so it reaches people before it begins. */
+const MIN_LEAD_MS = 2 * 60_000;
 
 export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
   const heading = useScreenHeading<HTMLHeadingElement>();
@@ -46,6 +48,8 @@ export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
   const [note, setNote] = useState('');
   const [sending, setSending] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  /** After a partial failure: the invite that was made, and who it didn't reach (a retry sends only to them). */
+  const [made, setMade] = useState<{ invite: Invite; failed: Connection[] } | null>(null);
 
   useEffect(() => {
     void listConnections().then((all) => setPeople(all.filter((c) => c.state === 'connected').sort((a, b) => Number(a.demo) - Number(b.demo))));
@@ -53,10 +57,20 @@ export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
 
   const isSession = !!draft.sessionId;
   // Arriving together means meeting just before the session starts.
-  const start = kind === 'arrive-together' ? draft.start - ARRIVE_EARLY_MS : draft.start;
+  const plannedStart = kind === 'arrive-together' ? draft.start - ARRIVE_EARLY_MS : draft.start;
   const end = kind === 'arrive-together' ? draft.start : draft.end;
-  const place =
-    placeId === 'room' ? draft.room : placeId === 'own' ? cleanText(ownPlace, LIMITS_INVITE.place) || undefined : PLACES.find((p) => p.id === placeId)?.name;
+  // Something already under way (sitting together at a running session) is met from a couple of minutes from now;
+  // recipients drop invites whose start has passed, so never send one that starts in the past.
+  const start = Math.max(plannedStart, Math.ceil((Date.now() + MIN_LEAD_MS) / 60_000) * 60_000);
+  const tooLate = end <= start;
+  const sittingTogether = isSession && kind === 'sit-together';
+  const place = sittingTogether
+    ? draft.room // the picker is hidden for this: never send a place the screen didn't show
+    : placeId === 'room'
+      ? draft.room
+      : placeId === 'own'
+        ? cleanText(ownPlace, LIMITS_INVITE.place) || undefined
+        : PLACES.find((p) => p.id === placeId)?.name;
 
   const toggle = (id: string) =>
     setChosen((s) => {
@@ -68,6 +82,12 @@ export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
 
   async function send(e: Event) {
     e.preventDefault();
+    if (sending) return; // a double tap must not send twice
+    if (made) return retry();
+    if (tooLate) {
+      setProblem('That time has already passed. Pick another break or session.');
+      return;
+    }
     if (chosen.size === 0) {
       setProblem('Pick at least one person.');
       return;
@@ -79,22 +99,40 @@ export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
     setSending(true);
     setProblem(null);
     const recipients = people.filter((p) => chosen.has(p.id));
-    const { failed } = await sendInvite(
-      relay,
-      me,
-      recipients,
-      { kind, start, end, place, spot, note: cleanText(note, LIMITS_INVITE.note) || undefined, sessionId: draft.sessionId, sessionTitle: draft.sessionTitle },
-      (who) => announce(`${who.profile.displayName} said yes (simulated).`),
-    );
-    setSending(false);
-    if (failed.length) {
-      const msg = `Sent, but it didn’t reach ${failed.map((f) => f.profile.displayName).join(', ')}. You might be offline.`;
-      announce(msg);
-      setProblem(msg);
-      return;
+    try {
+      const result = await sendInvite(
+        relay,
+        me,
+        recipients,
+        { kind, start, end, place, spot, note: cleanText(note, LIMITS_INVITE.note) || undefined, sessionId: draft.sessionId, sessionTitle: draft.sessionTitle },
+        (who) => announce(`${who.profile.displayName} said yes (simulated).`),
+      );
+      if (result.failed.length) return partly(result);
+      announce(`Invite sent to ${recipients.length === 1 ? recipients[0]!.profile.displayName : `${recipients.length} people`}.`);
+      onSent();
+    } catch {
+      setProblem('That didn’t save. Try again in a moment.');
+    } finally {
+      setSending(false);
     }
-    announce(`Invite sent to ${recipients.length === 1 ? recipients[0]!.profile.displayName : `${recipients.length} people`}.`);
-    onSent();
+  }
+
+  function partly(result: { invite: Invite; failed: Connection[] }) {
+    setMade(result);
+    setProblem(`Sent, but it didn’t reach ${result.failed.map((f) => f.profile.displayName).join(', ')}. You might be offline. Try again to send it just to them.`);
+  }
+
+  async function retry() {
+    if (!made) return;
+    setSending(true);
+    try {
+      const failed = await deliverInvite(relay, made.invite, made.failed, (who) => announce(`${who.profile.displayName} said yes (simulated).`));
+      if (failed.length) return partly({ invite: made.invite, failed });
+      announce('Sent to everyone now.');
+      onSent();
+    } finally {
+      setSending(false);
+    }
   }
 
   return (
@@ -205,8 +243,8 @@ export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
       )}
 
       <div class="actions">
-        <button type="submit" class="button" disabled={sending || people.length === 0}>
-          {sending ? 'Sending…' : 'Send'}
+        <button type="submit" class="button" disabled={sending || people.length === 0 || tooLate}>
+          {sending ? 'Sending…' : made ? `Try again for ${made.failed.length === 1 ? made.failed[0]!.profile.displayName : `${made.failed.length} people`}` : 'Send'}
         </button>
         <button type="button" class="button secondary" onClick={onCancel}>
           Cancel

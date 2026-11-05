@@ -8,6 +8,9 @@ describe('cleanText', () => {
   it('strips control and bidi override characters', () => {
     expect(cleanText('Sam\u0000‮⁦Lee﻿', 60)).toBe('Sam Lee');
   });
+  it('strips invisible marks that make lookalike names', () => {
+    expect(cleanText('Mi\u200Bna\u200E Oka\u2060for\u061C', 60)).toBe('Mina Okafor');
+  });
   it('keeps joiners used by emoji and scripts', () => {
     const family = '👩‍👩‍👧';
     expect(cleanText(family, 60)).toBe(family);

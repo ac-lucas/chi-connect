@@ -79,23 +79,46 @@ export async function sendInvite(
   };
   await putInvite(invite);
   await putScheduleItem(scheduleFor(invite));
+  return { invite, failed: await deliverInvite(relay, invite, recipients, onSimulatedYes, now) };
+}
 
-  const wire: WireInvite = { id, kind: n.kind, start: n.start, end: n.end, place: n.place, spot: n.spot, note: n.note, sessionId: n.sessionId, sessionTitle: n.sessionTitle };
+/**
+ * Send an invite that already exists to some of its recipients: the first time, or again to the ones it didn't
+ * reach. Same invite ID every time, so a retry never makes a second invite. Returns who it still didn't reach.
+ */
+export async function deliverInvite(
+  relay: Transport | null,
+  invite: Invite,
+  recipients: Connection[],
+  onSimulatedYes: (who: Connection) => void,
+  now = Date.now(),
+): Promise<Connection[]> {
+  const wire: WireInvite = {
+    id: invite.id,
+    kind: invite.kind,
+    start: invite.start,
+    end: invite.end,
+    place: invite.place,
+    spot: invite.meetingSpot,
+    note: invite.note,
+    sessionId: invite.programmeSessionId,
+    sessionTitle: invite.sessionTitle,
+  };
   const failed: Connection[] = [];
   for (const r of recipients) {
     if (r.demo) {
       // Simulated: demo people "say yes" after a short pause. Labelled as simulated in the UI.
-      setTimeout(() => void simulatedYes(id, r).then(() => onSimulatedYes(r)), 2500 + Math.random() * 2000);
+      setTimeout(() => void simulatedYes(invite.id, r).then(() => onSimulatedYes(r)), 2500 + Math.random() * 2000);
       continue;
     }
     try {
       if (!relay) throw new Error('no-relay');
-      await sendPairMessage(relay, r, { t: 'invite', v: 1, invite: wire }, ttlFor(n.start, now));
+      await sendPairMessage(relay, r, { t: 'invite', v: 1, invite: wire }, ttlFor(invite.start, now));
     } catch {
       failed.push(r);
     }
   }
-  return { invite, failed };
+  return failed;
 }
 
 async function simulatedYes(inviteId: string, who: Connection) {
@@ -118,11 +141,15 @@ function scheduleFor(i: Invite, title?: string): ScheduleItem {
   };
 }
 
+/** Invites further ahead than this are refused (a meetup is about the event days, not next year). */
+const MAX_AHEAD_MS = 30 * 24 * 60 * 60 * 1000;
+
 /** Apply an invite message from a connected pair (called by the relay sync). */
 export async function handleInviteMessage(c: Connection, msg: Exclude<PairMessage, { t: 'accept' } | { t: 'sessions' }>, sentAt: number, now = Date.now()): Promise<'new' | 'changed' | null> {
   if (msg.t === 'invite') {
     const w = msg.invite;
-    if (w.start <= now || (await getInvite(w.id))) return null; // too late, or already have it
+    // Too late, too far ahead to be real, or already have it (including one declined here: a tombstone).
+    if (w.start <= now || w.start > now + MAX_AHEAD_MS || (await getInvite(w.id))) return null;
     await putInvite({
       id: w.id,
       senderName: c.profile.displayName,
@@ -183,22 +210,40 @@ export async function acceptInvite(relay: Transport | null, inv: Invite): Promis
   await putScheduleItem(scheduleFor(accepted));
 }
 
-/** Say no (or not now): removed on this phone. Nothing is sent. */
+/**
+ * Say no (or not now), or leave one you said yes to: nothing is sent. The invite is kept only as a tombstone with
+ * no details, so the same message delivered again can't bring it back; it goes for good once its time passes.
+ */
 export async function declineInvite(inv: Invite): Promise<void> {
-  await deleteInvite(inv.id);
+  await putInvite({ ...inv, status: 'declined', place: undefined, meetingSpot: undefined, note: undefined });
 }
 
-/** The sender calls it off: everyone invited is told, and it leaves the day. */
-export async function cancelInvite(relay: Transport | null, inv: Invite): Promise<void> {
-  if (relay) {
-    for (const id of inv.recipientIds) {
-      const c = await getConnection(id);
-      if (c && !c.demo) await sendPairMessage(relay, c, { t: 'cancel', v: 1, id: inv.id }).catch(() => {});
+/**
+ * The sender calls it off and it leaves the day. Returns how many people were told and how many couldn't be
+ * reached (demo people count as told), so the screen doesn't claim more than happened.
+ */
+export async function cancelInvite(relay: Transport | null, inv: Invite): Promise<{ told: number; missed: number }> {
+  let told = 0;
+  let missed = 0;
+  for (const id of inv.recipientIds) {
+    const c = await getConnection(id);
+    if (!c) continue;
+    if (c.demo) {
+      told += 1;
+      continue;
+    }
+    try {
+      if (!relay) throw new Error('no-relay');
+      await sendPairMessage(relay, c, { t: 'cancel', v: 1, id: inv.id });
+      told += 1;
+    } catch {
+      missed += 1;
     }
   }
   await putInvite({ ...inv, status: 'cancelled' });
   const item = await scheduleItemForInvite(inv.id);
   if (item) await deleteScheduleItem(item.id);
+  return { told, missed };
 }
 
 /** Simulated incoming invite from a demo person, so someone testing alone can see the other side. */
@@ -228,9 +273,27 @@ export async function simulateIncoming(from: Connection, n: NewInvite, now = Dat
   return inv;
 }
 
-/** Pending invites to show now: not expired, not cancelled. */
+/**
+ * Tidy invites, then return the pending ones to show now.
+ *  - Unanswered, declined or cancelled incoming invites go for good once their time has come.
+ *  - Once a meetup has ended, its meeting spot and note are deleted (the spot belongs to one meetup only).
+ *    What's left (who, when, where) stays for your own day history and recap.
+ */
 export async function pendingIncoming(now = Date.now()): Promise<Invite[]> {
   const all = await listInvites();
-  for (const i of all) if (!i.outgoing && i.status === 'pending' && i.expiresAt <= now) await deleteInvite(i.id); // unanswered: gone quietly
-  return all.filter((i) => !i.outgoing && i.status === 'pending' && i.expiresAt > now).sort((a, b) => a.start - b.start);
+  const kept: Invite[] = [];
+  for (const i of all) {
+    if (!i.outgoing && i.status !== 'accepted' && i.expiresAt <= now) {
+      await deleteInvite(i.id);
+      continue;
+    }
+    if (i.end <= now && (i.meetingSpot || i.note)) {
+      const stripped = { ...i, meetingSpot: undefined, note: undefined };
+      await putInvite(stripped);
+      kept.push(stripped);
+      continue;
+    }
+    kept.push(i);
+  }
+  return kept.filter((i) => !i.outgoing && i.status === 'pending' && i.expiresAt > now).sort((a, b) => a.start - b.start);
 }

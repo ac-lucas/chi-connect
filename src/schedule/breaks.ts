@@ -1,6 +1,7 @@
 // Auto-breaks (F11): fill the gaps between what's in someone's day with a lunch break and breathers,
 // shaped by today's energy (F22), and give a friendly heads-up on a packed day. Pure: no storage, no clock.
 import type { EnergyLevel } from '../model/types';
+import { atMinutes } from '../programme/programme';
 import { ENERGY } from './energy';
 
 export interface Busy {
@@ -76,8 +77,8 @@ export function planDay(
   }
 
   const e = ENERGY[energy];
-  const mealFrom = dayStart + prefs.mealFrom * MIN;
-  const mealTo = dayStart + prefs.mealTo * MIN;
+  const mealFrom = atMinutes(dayStart, prefs.mealFrom);
+  const mealTo = atMinutes(dayStart, prefs.mealTo);
   const half = (prefs.buffer / 2) * MIN;
   let mealPlaced = false;
 
