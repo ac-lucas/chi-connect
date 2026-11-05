@@ -8,18 +8,15 @@ import { getSetting, listAllNotes, listAllSchedule, listCatchUp, listConnections
 import type { Connection, FollowUp } from '../model/types';
 import { download, toCsv, toIcs, toVCard } from '../export/exports';
 import { announce } from '../ui/announce';
+import { useLive } from '../ui/useLive';
 import { useScreenHeading } from '../ui/useScreenHeading';
 
 /** Recap (F26): your own week in a few cards. Built on this phone from your data; nothing is sent. */
 export function RecapScreen({ programme, onBack }: { programme: Programme; onBack: () => void }) {
   const heading = useScreenHeading<HTMLHeadingElement>();
   const [recap, setRecap] = useState<Recap | null>(null);
-  const [followUps, setFollowUps] = useState<FollowUp[]>([]);
-  const [people, setPeople] = useState<Connection[]>([]);
-  const loadFollowUps = async () => {
-    setFollowUps(await listFollowUps());
-    setPeople(await listConnections());
-  };
+  const followUps: FollowUp[] = useLive(() => listFollowUps(), ['followUps']) ?? [];
+  const people: Connection[] = useLive(listConnections, ['connections']) ?? [];
 
   useEffect(() => {
     void (async () => {
@@ -36,7 +33,6 @@ export function RecapScreen({ programme, onBack }: { programme: Programme; onBac
         breathers += planDay(busy, d, level, undefined, skipped).breaks.filter((b) => b.end < Date.now()).length;
       }
       setRecap(buildRecap(programme, items, await listInvites(), await listConnections(), await listCatchUp(), breathers));
-      await loadFollowUps();
     })();
   }, [programme]);
 
@@ -143,7 +139,6 @@ export function RecapScreen({ programme, onBack }: { programme: Programme; onBac
                       checked={f.done}
                       onChange={async () => {
                         await putFollowUp({ ...f, done: !f.done });
-                        await loadFollowUps();
                         announce(f.done ? 'Marked not done.' : 'Done. Nice.');
                       }}
                     />

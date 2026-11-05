@@ -4,6 +4,7 @@ import { cleanText, LIMITS } from '../model/text';
 import type { Connection, FollowUp, Note } from '../model/types';
 import { deleteFollowUp, deleteNote, listFollowUps, listNotes, putFollowUp, putNote } from '../storage/db';
 import { holdFocus, keepingFocus } from '../ui/focus';
+import { useLive } from '../ui/useLive';
 import { announce } from '../ui/announce';
 
 /** One-tap chips for quick capture (F07). Short, about the moment, never about the person's looks or background. */
@@ -19,8 +20,13 @@ interface Props {
 
 /** Notes and follow-ups about one person (F07, F09). Only on this phone; never shared. */
 export function NotesSection({ connection: c, quickCapture }: Props) {
-  const [notes, setNotes] = useState<Note[]>([]);
-  const [follow, setFollow] = useState<FollowUp[]>([]);
+  const data = useLive(
+    async () => ({ notes: (await listNotes(c.id)).sort((a, b) => b.createdAt - a.createdAt), follow: await listFollowUps(c.id) }),
+    ['notes', 'followUps'],
+    [c.id],
+  );
+  const notes: Note[] = data?.notes ?? [];
+  const follow: FollowUp[] = data?.follow ?? [];
   const [chips, setChips] = useState<Set<string>>(new Set());
   const [text, setText] = useState('');
   const [captured, setCaptured] = useState(!quickCapture);
@@ -29,13 +35,6 @@ export function NotesSection({ connection: c, quickCapture }: Props) {
   const noteInput = useRef<HTMLTextAreaElement>(null);
   const name = c.profile.displayName;
 
-  const load = async () => {
-    setNotes((await listNotes(c.id)).sort((a, b) => b.createdAt - a.createdAt));
-    setFollow(await listFollowUps(c.id));
-  };
-  useEffect(() => {
-    void load();
-  }, [c.id]);
 
   const toggleChip = (ch: string) =>
     setChips((s) => {
@@ -57,7 +56,6 @@ export function NotesSection({ connection: c, quickCapture }: Props) {
     setText('');
     setChips(new Set());
     setCaptured(true);
-    await load();
     announce(chips.has(FOLLOW_UP_CHIP) ? 'Note saved, and a follow-up added.' : 'Note saved.');
     restore();
   }
@@ -70,13 +68,11 @@ export function NotesSection({ connection: c, quickCapture }: Props) {
     await putFollowUp({ id: randomId(), connectionId: c.id, text: clean, due: due && Number.isFinite(due) ? due : undefined, done: false });
     setFuText('');
     setFuDue('');
-    await load();
     announce('Follow-up added.');
   }
 
   async function toggleDone(f: FollowUp) {
     await putFollowUp({ ...f, done: !f.done });
-    await load();
     announce(f.done ? 'Marked not done.' : 'Done. Nice.');
   }
 
@@ -138,7 +134,6 @@ export function NotesSection({ connection: c, quickCapture }: Props) {
                   aria-label={`Delete follow-up: ${f.text}`}
                   onClick={() => keepingFocus(async () => {
                     await deleteFollowUp(f.id);
-                    await load();
                     announce('Deleted.');
                   })}
                 >
@@ -187,7 +182,6 @@ export function NotesSection({ connection: c, quickCapture }: Props) {
                     aria-label="Delete this note"
                     onClick={() => keepingFocus(async () => {
                       await deleteNote(n.id);
-                      await load();
                       announce('Note deleted.');
                     })}
                   >

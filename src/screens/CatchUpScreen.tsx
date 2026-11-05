@@ -4,16 +4,13 @@ import { dayLabel } from '../programme/programme';
 import { deleteCatchUp, listCatchUp } from '../storage/db';
 import { announce } from '../ui/announce';
 import { keepingFocus } from '../ui/focus';
+import { useLive } from '../ui/useLive';
 import { useScreenHeading } from '../ui/useScreenHeading';
 
 /** Catch up later (F23): sessions you couldn't be in, with their papers, for the train home. */
 export function CatchUpScreen({ onBack }: { onBack: () => void }) {
   const heading = useScreenHeading<HTMLHeadingElement>();
-  const [list, setList] = useState<CatchUpItem[]>([]);
-  const load = () => listCatchUp().then(setList);
-  useEffect(() => {
-    void load();
-  }, []);
+  const list = useLive(listCatchUp, ['catchUp']) ?? [];
 
   return (
     <section class="stack" aria-labelledby="catchup-heading">
@@ -58,7 +55,6 @@ export function CatchUpScreen({ onBack }: { onBack: () => void }) {
                   aria-label={`Remove ${c.title} from Catch up later`}
                   onClick={() => keepingFocus(async () => {
                     await deleteCatchUp(c.programmeSessionId);
-                    await load();
                     announce('Removed.');
                   })}
                 >

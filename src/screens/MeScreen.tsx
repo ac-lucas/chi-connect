@@ -4,6 +4,7 @@ import type { Profile } from '../model/types';
 import { getSetting, listCatchUp, setSetting, wipeEverything } from '../storage/db';
 import { announce } from '../ui/announce';
 import { useScreenHeading } from '../ui/useScreenHeading';
+import { useLive } from '../ui/useLive';
 import { ProfileCard } from './ProfileCard';
 
 interface Props {
@@ -15,9 +16,11 @@ interface Props {
 
 export function MeScreen({ profile, onEdit, onCatchUp, onRecap }: Props) {
   const heading = useScreenHeading<HTMLHeadingElement>();
-  const [quiet, setQuiet] = useState(false);
-  const [snoozeUntil, setSnoozeUntil] = useState(0);
-  const [catchUp, setCatchUp] = useState(0);
+  const live = useLive(
+    async () => ({ quiet: !!(await getSetting('quietMode')), snoozeUntil: (await getSetting('snoozeUntil')) ?? 0, catchUp: (await listCatchUp()).length }),
+    ['settings', 'catchUp'],
+  );
+  const { quiet, snoozeUntil, catchUp } = live ?? { quiet: false, snoozeUntil: 0, catchUp: 0 };
   const [confirmWipe, setConfirmWipe] = useState(false);
   const [wiping, setWiping] = useState(false);
   const [wipeFailed, setWipeFailed] = useState(false);
@@ -42,22 +45,12 @@ export function MeScreen({ profile, onEdit, onCatchUp, onRecap }: Props) {
     }
   }
 
-  useEffect(() => {
-    void (async () => {
-      setQuiet(!!(await getSetting('quietMode')));
-      setSnoozeUntil((await getSetting('snoozeUntil')) ?? 0);
-      setCatchUp((await listCatchUp()).length);
-    })();
-  }, []);
-
   async function toggleQuiet(on: boolean) {
     await setSetting('quietMode', on);
-    setQuiet(on);
     announce(on ? 'Quiet mode on. No nudges or suggestions.' : 'Quiet mode off.');
   }
   async function unsnooze() {
     await setSetting('snoozeUntil', 0);
-    setSnoozeUntil(0);
     announce('Nudges are back on.');
   }
 

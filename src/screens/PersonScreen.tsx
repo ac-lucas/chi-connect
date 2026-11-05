@@ -11,6 +11,7 @@ import { announce } from '../ui/announce';
 import { useScreenHeading } from '../ui/useScreenHeading';
 import { ProfileCard } from './ProfileCard';
 import { keepingFocus } from '../ui/focus';
+import { useLive } from '../ui/useLive';
 import { SharedTopics } from './SharedTopics';
 
 interface Props {
@@ -28,10 +29,8 @@ export function PersonScreen({ connection: c, myTags, justConnected, relay, prog
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  const [mySessionIds, setMySessionIds] = useState<string[]>([]);
-  useEffect(() => {
-    void listAllSchedule().then((all) => setMySessionIds(all.filter((s) => s.type === 'session' && s.programmeSessionId).map((s) => s.programmeSessionId!)));
-  }, [c.id]);
+  const mySessionIds =
+    useLive(async () => (await listAllSchedule()).filter((s) => s.type === 'session' && s.programmeSessionId).map((s) => s.programmeSessionId!), ['schedule']) ?? [];
   const theirIds = c.sharedSessionIds;
   const both = programme ? programme.sessions.filter((s) => mySessionIds.includes(s.id) && theirIds.includes(s.id)) : [];
 

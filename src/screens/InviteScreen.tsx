@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useMemo, useState } from 'preact/hooks';
 import { PLACES, PLACE_TYPE_LABELS } from '../data/places';
 import { LIMITS_INVITE } from '../relay/invites';
 import { cleanText } from '../model/text';
@@ -9,6 +9,7 @@ import type { Transport } from '../relay/transport';
 import { listConnections } from '../storage/db';
 import { announce } from '../ui/announce';
 import { useScreenHeading } from '../ui/useScreenHeading';
+import { useLive } from '../ui/useLive';
 import { SpotPicker } from './SpotPicker';
 
 export interface InviteDraft {
@@ -38,7 +39,8 @@ const MIN_LEAD_MS = 2 * 60_000;
 
 export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
   const heading = useScreenHeading<HTMLHeadingElement>();
-  const [people, setPeople] = useState<Connection[]>([]);
+  const all = useLive(listConnections, ['connections']);
+  const people = useMemo(() => (all ?? []).filter((c) => c.state === 'connected').sort((a, b) => Number(a.demo) - Number(b.demo)), [all]);
   const [kind, setKind] = useState<InviteKind>(draft.kinds[0]!);
   const [chosen, setChosen] = useState<Set<string>>(new Set(draft.preselect ?? []));
   const [confirmAll, setConfirmAll] = useState(false);
@@ -51,9 +53,6 @@ export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
   /** After a partial failure: the invite that was made, and who it didn't reach (a retry sends only to them). */
   const [made, setMade] = useState<{ invite: Invite; failed: Connection[] } | null>(null);
 
-  useEffect(() => {
-    void listConnections().then((all) => setPeople(all.filter((c) => c.state === 'connected').sort((a, b) => Number(a.demo) - Number(b.demo))));
-  }, []);
 
   const isSession = !!draft.sessionId;
   // Arriving together means meeting just before the session starts.

@@ -9,6 +9,7 @@ import type { Connection } from '../model/types';
 import { announce } from '../ui/announce';
 import { useScreenHeading } from '../ui/useScreenHeading';
 import { savedId } from '../schedule/starter';
+import { useLive } from '../ui/useLive';
 import { ProgrammeNote } from './ProgrammeNote';
 
 interface Props {
@@ -23,14 +24,8 @@ export function AddSessionsScreen({ programme, initialDay, onDone }: Props) {
   const days = programmeDays(programme);
   const [day, setDay] = useState(days.includes(initialDay) ? initialDay : days[0]!);
   const [query, setQuery] = useState('');
-  const [saved, setSaved] = useState<ScheduleItem[]>([]);
-  const [people, setPeople] = useState<Connection[]>([]);
-
-  const refresh = () => listAllSchedule().then((all) => setSaved(all.filter((s) => s.type === 'session')));
-  useEffect(() => {
-    void refresh();
-    void listConnections().then(setPeople);
-  }, []);
+  const saved = useLive(async () => (await listAllSchedule()).filter((s) => s.type === 'session'), ['schedule']) ?? [];
+  const people = useLive(listConnections, ['connections']) ?? [];
 
   const results = useMemo(() => searchSessions(programme, query, day), [programme, query, day]);
   // The spoken result count waits for a pause in typing, so it isn't read out on every keystroke.
@@ -55,7 +50,8 @@ export function AddSessionsScreen({ programme, initialDay, onDone }: Props) {
     }
   }
   async function toggleNow(s: ProgrammeSession) {
-    const existing = savedBySession.get(s.id);
+    // Decide from what's stored right now, not the screen's copy, which can lag a quick second tap.
+    const existing = (await listAllSchedule()).find((x) => x.type === 'session' && x.programmeSessionId === s.id);
     if (existing) {
       await deleteScheduleItem(existing.id);
       announce(`Removed ${s.title}.`);
@@ -73,7 +69,6 @@ export function AddSessionsScreen({ programme, initialDay, onDone }: Props) {
       const clash = saved.find((x) => overlaps(x, s));
       announce(clash ? `Added ${s.title}. It overlaps ${clash.title}.` : `Added ${s.title}.`);
     }
-    await refresh();
   }
 
   return (
