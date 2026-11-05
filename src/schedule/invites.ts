@@ -182,6 +182,7 @@ export async function handleInviteMessage(c: Connection, msg: Exclude<PairMessag
   }
   // Cancel and update only count from the person who sent the invite.
   if (inv.outgoing || inv.fromConnectionId !== c.id) return null;
+  if (inv.status === 'declined') return null; // a tombstone keeps no details: an update must not put them back
   if (msg.t === 'cancel') {
     await putInvite({ ...inv, status: 'cancelled' });
     const item = await scheduleItemForInvite(inv.id);

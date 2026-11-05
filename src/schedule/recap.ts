@@ -1,4 +1,4 @@
-// C Wrapped (F26): a recap of your own conference, made on this phone from your own data only.
+// Recap (F26): a look back at your own week, made on this phone from your own data only.
 // No rankings, no comparisons with anyone else, nothing about what you skipped.
 import { KNOWN_TAGS } from '../data/tags';
 import type { CatchUpItem, Connection, Invite, ScheduleItem } from '../model/types';

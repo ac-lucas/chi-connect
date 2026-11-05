@@ -213,7 +213,9 @@ describe('limits on requests', () => {
     for (let i = 0; i < 25; i++) await sendRequest(relay, introPayload(a.me, intro), { displayName: `Spam ${i}` });
     const r = await syncOnce(relay, a);
     expect(r.newRequests).toHaveLength(MAX_NEW_REQUESTS_PER_SYNC);
-    expect(await relay.inbox([{ id: intro.mailboxId, token: intro.mailboxToken }])).toEqual({}); // the rest cleared
+    // The rest wait on the relay for the next sync rather than being lost.
+    expect((await syncOnce(relay, a)).newRequests).toHaveLength(MAX_NEW_REQUESTS_PER_SYNC);
+    expect((await syncOnce(relay, a)).newRequests).toHaveLength(5);
   });
 
   it('refuses a request that points back at our own mailbox', async () => {

@@ -68,6 +68,17 @@ describe('checkFeed', () => {
     expect((await checkFeed(null, 0, { now: 1e12, fetchImpl: f, base: BASE })).programme?.edition).toBe('chi2026');
   });
 
+  it('never swaps a held 2027 programme for 2026 when 2027 has a hiccup', async () => {
+    const { f, calls } = fakeFetch({
+      [`${BASE}/chi2027/version.json`]: { status: 503, body: {} },
+      [`${BASE}/chi2026/version.json`]: { body: version('chi2026', 1) },
+      [`${BASE}/chi2026/revisions/001.json`]: { body: programmeFile },
+    });
+    const r = await checkFeed({ edition: 'chi2027', revision: 5 }, 0, { now: 1e12, fetchImpl: f, base: BASE });
+    expect(r.programme).toBeNull();
+    expect(calls.some((c) => c.includes('chi2026'))).toBe(false);
+  });
+
   it('only downloads when the revision moves', async () => {
     const { f, calls } = fakeFetch({ [`${BASE}/chi2027/version.json`]: { body: version('chi2027', 17) } });
     const r = await checkFeed({ edition: 'chi2027', revision: 17 }, 0, { now: 1e12, fetchImpl: f, base: BASE });
@@ -114,7 +125,7 @@ describe('isRevisionUrl', () => {
 
 describe('preview', () => {
   const H = 3_600_000;
-  // 13 April 2026, 09:00 and 15:30 in Barcelona (UTC+2), and a session the next day.
+  // 13 April 2026, 09:00 and 15:30 in the programme's time zone (UTC+2), and a session the next day.
   const p: Programme = {
     name: 'Example',
     sample: false,

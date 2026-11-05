@@ -86,9 +86,13 @@ export function clientPrefix(ip: string): string {
 
 /** In-memory fixed-window limiter. Nothing here is persisted. */
 export class RateLimiter {
+  /** Per-client counters: the only ones a flood can fill, so the only ones that are ever evicted. */
   private counts = new Map<string, { n: number; start: number }>();
+  /** Shared counters (everyone, per target mailbox): kept apart, so a flood of new clients can't reset them. */
+  private shared = new Map<string, { n: number; start: number }>();
   private lastSweep = 0;
   hit(clientKey: string, bucket: Bucket, now: number): boolean {
+    if (clientKey === EVERYONE || bucket === 'send-to') return this.hitShared(`${bucket}:${clientKey}`, bucket, now);
     const key = `${bucket}:${clientKey}`;
     const e = this.counts.get(key);
     if (!e || now - e.start >= WINDOW_MS) {
@@ -103,13 +107,24 @@ export class RateLimiter {
     e.n += 1;
     return e.n <= BUDGETS[bucket];
   }
+  private hitShared(key: string, bucket: Bucket, now: number): boolean {
+    const e = this.shared.get(key);
+    if (!e || now - e.start >= WINDOW_MS) {
+      if (this.shared.size >= SWEEP_AT) for (const [k, v] of this.shared) if (now - v.start >= WINDOW_MS) this.shared.delete(k);
+      this.shared.set(key, { n: 1, start: now });
+      return true;
+    }
+    e.n += 1;
+    return e.n <= BUDGETS[bucket];
+  }
   /** How many limiter entries are held (tests). */
   get tracked(): number {
     return this.counts.size;
   }
   /** Has this client already used up `bucket`? Doesn't count a request. */
   spent(clientKey: string, bucket: Bucket, now: number): boolean {
-    const e = this.counts.get(`${bucket}:${clientKey}`);
+    const map = clientKey === EVERYONE || bucket === 'send-to' ? this.shared : this.counts;
+    const e = map.get(`${bucket}:${clientKey}`);
     return !!e && now - e.start < WINDOW_MS && e.n >= BUDGETS[bucket];
   }
   private evictOldest(n: number) {
@@ -284,21 +299,25 @@ export class RelayCore {
     const messages: Record<string, { id: string; ct: string; created: number }[]> = {};
     let size = 0;
     let more = false;
+    // Each mailbox gets a fair share of the reply (at least one full message), so one mailbox full of large
+    // messages can't crowd out mail for the others.
+    const share = Math.max(LIMITS.ctChars, Math.floor(LIMITS.inboxReplyChars / boxes.length));
     for (const { id, token } of boxes) {
       if (!(await this.owns(id, token, now))) continue; // not yours: say nothing about it
-      if (more) continue; // still claim/refresh the rest, but send no more this time
       const rows = this.sql.all<{ id: string; ct: string; created: number }>(
         'SELECT id, ct, created FROM messages WHERE mailbox = ? AND expires > ? ORDER BY created',
         id,
         now,
       );
       const out: { id: string; ct: string; created: number }[] = [];
+      let boxSize = 0;
       for (const r of rows) {
-        if (size + r.ct.length > LIMITS.inboxReplyChars) {
-          more = true; // the rest comes on the next sync, once these are acked
-          break;
+        if (size + r.ct.length > LIMITS.inboxReplyChars || boxSize + r.ct.length > share) {
+          more = true; // skip it: it comes on a later sync, once what was sent is acked
+          continue;
         }
         size += r.ct.length;
+        boxSize += r.ct.length;
         out.push({ id: r.id, ct: r.ct, created: r.created });
       }
       if (out.length) messages[id] = out;

@@ -86,14 +86,23 @@ export async function checkFeed(
   } = {},
 ): Promise<CheckResult> {
   if (now - lastCheckedAt < POLL_MS) return { programme: null, checked: false };
-  for (const edition of EDITIONS) {
+  // Never go back to an older edition than the one held (a hiccup on the new one must not swap in last year's).
+  const heldRank = held ? EDITIONS.indexOf(held.edition as (typeof EDITIONS)[number]) : -1;
+  for (const [rank, edition] of EDITIONS.entries()) {
+    if (heldRank >= 0 && rank > heldRank) break;
     let version: Record<string, unknown>;
     try {
       const res = await fetchImpl(`${base}/${edition}/version.json?t=${now}`, { cache: 'no-store', credentials: 'omit', signal: timeoutSignal(TIMEOUT_MS) });
-      if (!res.ok) continue; // not published yet (404) or not answering: try the next edition
+      if (res.status === 404) continue; // not published yet: try the next (older) edition
+      if (!res.ok) {
+        // The newest edition is having trouble. Only fall back if we hold nothing at all yet (a new install).
+        if (held) return { programme: null, checked: true };
+        continue;
+      }
       version = (await readJson(res, MAX_VERSION_BYTES)) as Record<string, unknown>;
     } catch {
-      continue; // offline, blocked or garbled: try the next edition, else keep what we have
+      if (held) return { programme: null, checked: true }; // offline or garbled: keep what we have
+      continue;
     }
     const revision = version?.revision;
     if (typeof revision !== 'number' || !Number.isSafeInteger(revision) || revision < 0) return { programme: null, checked: true };

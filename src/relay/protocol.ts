@@ -258,7 +258,10 @@ export async function syncOnce(t: Transport, store: SyncStore, now = Date.now())
   for (const intro of intros) {
     const box = { id: intro.mailboxId, token: intro.mailboxToken };
     for (const m of inbox[intro.mailboxId] ?? []) {
-      const full = waiting >= MAX_PENDING_REQUESTS || result.newRequests.length >= MAX_NEW_REQUESTS_PER_SYNC;
+      // Over this sync's share: leave it on the relay for the next sync (it isn't lost).
+      if (result.newRequests.length >= MAX_NEW_REQUESTS_PER_SYNC) continue;
+      // Too many waiting already: turned away quietly (cleared), so a flood can't pile up on this phone.
+      const full = waiting >= MAX_PENDING_REQUESTS;
       try {
         const pending = full ? null : await openHello(intro, m.ct, now, clampSentAt(m.created, now));
         if (pending && !knownNonces.has(pending.theirNonce)) {

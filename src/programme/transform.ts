@@ -1,4 +1,4 @@
-// Turn the programme feed (the conference system's native export, schemeVersion 7) into the app's small
+// Turn the programme feed (the scheduling system's native export, schemeVersion 7) into the app's small
 // Programme shape. The feed is untrusted input: every field is type-checked, cleaned and size-limited,
 // and anything malformed is dropped rather than shown.
 import { KNOWN_TAGS } from '../data/tags';

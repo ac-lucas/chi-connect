@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { ConnectPayload } from './connect/payload';
-import { hasKeys, INTRO_KEEP_MS, syncOnce } from './relay/protocol';
+import { INTRO_KEEP_MS, syncOnce } from './relay/protocol';
 import { relayFromEnv } from './relay/transport';
 import { createProfile, draftFromProfile, emptyDraft, updateProfile, type ProfileDraft } from './model/profile';
 import type { Connection, Profile } from './model/types';
@@ -41,6 +41,21 @@ type Screen =
   | { kind: 'enter-code' }
   | { kind: 'request'; theirs: ConnectPayload }
   | { kind: 'person'; id: string; justConnected?: boolean };
+
+/** Page titles per screen (WCAG 2.4.2), so tabs, history and screen readers say where you are. */
+const SCREEN_TITLES: Record<Exclude<Screen['kind'], 'tabs'>, string> = {
+  edit: 'Edit profile',
+  connect: 'Connect face to face',
+  share: 'Share your code',
+  sessions: 'Add sessions',
+  invite: 'Invite someone',
+  catchup: 'Catch up later',
+  recap: 'Your week',
+  'enter-code': 'Enter a code',
+  request: 'Connect',
+  person: 'Person',
+};
+const TAB_TITLES: Record<Tab, string> = { today: 'Today', people: 'People', me: 'You' };
 
 /** The relay for this build, or null (then one-way connecting is hidden). */
 const relay = relayFromEnv();
@@ -167,7 +182,7 @@ export function App() {
       try {
         const newInvites: string[] = [];
         // Expired one-way codes (and their private keys) go once no late request can still arrive.
-        await pruneIntros((i) => hasKeys(i) && i.expiresAt + INTRO_KEEP_MS > Date.now());
+        await pruneIntros((i) => i.expiresAt + INTRO_KEEP_MS);
         const r = await syncOnce(relay, {
           intros: getIntros,
           connections: listConnections,
@@ -361,6 +376,11 @@ export function App() {
       />
     );
   }
+
+  const pageTitle = profile === null ? 'Set up' : profile === undefined ? '' : screen.kind === 'tabs' ? TAB_TITLES[tab] : SCREEN_TITLES[screen.kind];
+  useEffect(() => {
+    document.title = pageTitle ? `${pageTitle} · Pebble` : 'Pebble';
+  }, [pageTitle]);
 
   const showTabs = profile && (screen.kind === 'tabs' || screen.kind === 'person' || screen.kind === 'catchup' || screen.kind === 'recap');
   const requestCount = connections.filter((c) => c.state === 'pending-received').length;

@@ -26,9 +26,9 @@ export function PeopleScreen({ connections, myTags, onConnect, onOpen, onShare, 
     return (
       <li key={c.id}>
         <button type="button" class="person-row" onClick={() => onOpen(c.id)}>
-          <span class="person-name">
+          <span class="person-name" dir="auto">
             {c.profile.displayName}
-            {c.demo && <span class="badge">Demo</span>}
+            {c.demo && <span class="badge"><span class="visually-hidden">, </span>Demo</span>}
           </span>
           {line && <span class="muted">{line}</span>}
           <span class="person-shared">

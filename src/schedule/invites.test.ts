@@ -76,6 +76,8 @@ describe('receiving invites', () => {
     expect(tomb.status).toBe('declined');
     expect([tomb.place, tomb.note, tomb.meetingSpot]).toEqual([undefined, undefined, undefined]);
     expect(await handleInviteMessage(sam, { t: 'invite', v: 1, invite: w }, Date.now())).toBeNull(); // replayed
+    expect(await handleInviteMessage(sam, { t: 'update', v: 1, id: w.id, place: 'Somewhere' }, Date.now())).toBeNull();
+    expect((await getInvite(w.id))!.place).toBeUndefined(); // an update can't put details back
     expect(await pendingIncoming()).toEqual([]);
     await pendingIncoming(w.start + 1); // its time has come: the tombstone goes too
     expect(await getInvite(w.id)).toBeNull();

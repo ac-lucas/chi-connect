@@ -17,6 +17,7 @@ import {
   saveProfile,
   canStoreCryptoKeys,
   getIntros,
+  pruneIntros,
   saveIntros,
   seedDemoOnce,
   setSetting,
@@ -58,6 +59,15 @@ describe('storage', () => {
     expect(back?.privateKey?.extractable).toBe(false);
     expect(back?.publicKey).toBe(intro.publicKey);
     await expect(crypto.subtle.exportKey('jwk', back!.privateKey!)).rejects.toThrow();
+  });
+
+  it('pruning keeps JWK-backed intros that are still in time, and drops expired ones', async () => {
+    const { newIntro } = await import('../relay/protocol');
+    const live = await newIntro(Date.now(), { exportable: true });
+    const old = await newIntro(Date.now() - 100 * 3_600_000, { exportable: true });
+    await saveIntros([live, old]);
+    await pruneIntros((i) => i.expiresAt + 48 * 3_600_000);
+    expect((await getIntros()).map((i) => i.nonce)).toEqual([live.nonce]);
   });
 
   it('detects that keys can be stored here', async () => {
@@ -113,9 +123,11 @@ describe('storage', () => {
     await saveProfile(createProfile({ ...emptyDraft(), displayName: 'Ana' }));
     await putConnection(conn('a'));
     // A second "tab": the open database is asked to let go rather than blocking the delete.
+    const before = (await indexedDB.databases()).length;
     await wipeEverything();
-    expect(await getProfile()).toBeNull();
-    expect(await listConnections()).toEqual([]);
+    expect((await indexedDB.databases()).length).toBe(before - 1); // the whole database is gone
+    // Until the page reloads, nothing (a sync still running, say) can reopen it and write data back.
+    await expect(putConnection(conn('late'))).rejects.toThrow('wiping');
   });
 
   it('stores typed settings', async () => {

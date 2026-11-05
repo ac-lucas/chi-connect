@@ -47,8 +47,13 @@ const VERSION = 1;
 let dbName = 'pebble';
 let dbPromise: Promise<IDBPDatabase<PebbleSchema>> | null = null;
 
+/** Set while everything is being deleted: nothing may open the database again until the page reloads. */
+let wiping = false;
+
 function db(): Promise<IDBPDatabase<PebbleSchema>> {
-  dbPromise ??= openDB<PebbleSchema>(dbName, VERSION, {
+  if (wiping) return Promise.reject(new Error('wiping'));
+  if (dbPromise) return dbPromise;
+  const opening: Promise<IDBPDatabase<PebbleSchema>> = openDB<PebbleSchema>(dbName, VERSION, {
     // Step through versions, so a later VERSION bump adds to an existing database instead of failing.
     upgrade(d, oldVersion) {
       if (oldVersion >= 1) return;
@@ -61,21 +66,22 @@ function db(): Promise<IDBPDatabase<PebbleSchema>> {
       d.createObjectStore('invites', { keyPath: 'id' });
       d.createObjectStore('catchUp', { keyPath: 'programmeSessionId' });
     },
-    // Another tab (or a wipe) needs the database: let go, and open again on next use.
+    // Another tab (or a wipe) needs the database: close THIS connection, and open afresh on next use.
     blocking() {
-      void dbPromise?.then((d) => d.close());
-      dbPromise = null;
+      void opening.then((d) => d.close());
+      if (dbPromise === opening) dbPromise = null;
     },
-    // The browser closed the connection (it can, under storage pressure): open again on next use.
+    // The browser closed this connection (it can, under storage pressure): open again on next use.
     terminated() {
-      dbPromise = null;
+      if (dbPromise === opening) dbPromise = null;
     },
   });
+  dbPromise = opening;
   // A failed open isn't cached: the next call tries again.
-  dbPromise.catch(() => {
-    dbPromise = null;
+  opening.catch(() => {
+    if (dbPromise === opening) dbPromise = null;
   });
-  return dbPromise;
+  return opening;
 }
 
 /** Tests only: switch to a fresh database name. */
@@ -83,6 +89,7 @@ export async function resetDatabaseForTests(name: string): Promise<void> {
   if (dbPromise) (await dbPromise).close();
   dbPromise = null;
   keyStorage = null;
+  wiping = false;
   dbName = name;
   await deleteDB(name);
 }
@@ -238,11 +245,15 @@ export async function getIntros(): Promise<Intro[]> {
   return out;
 }
 
-/** Drop intros we no longer need (their private keys go with them). */
-export async function pruneIntros(keep: (i: Intro) => boolean): Promise<void> {
-  const saved = (await getSetting('intros')) ?? [];
-  const kept = saved.filter(keep);
-  if (kept.length !== saved.length) await setSetting('intros', kept);
+/**
+ * Drop intros whose time is up (their private keys go with them). Judged on the stored record, where a key may
+ * be held as a CryptoKey or, on browsers that can't store one, as JWK. One transaction, so a code being made at
+ * the same moment can't be lost.
+ */
+export async function pruneIntros(keepUntil: (i: Intro) => number, now = Date.now()): Promise<void> {
+  await updateSetting('intros', (saved = []) =>
+    saved.filter((i) => !!i.publicKey && (!!i.privateKey || !!i.privateJwk) && keepUntil(i) > now),
+  );
 }
 
 export async function saveIntros(intros: Intro[]): Promise<void> {
@@ -380,6 +391,7 @@ export async function wipeEverything(): Promise<void> {
   }
   dbPromise = null;
   keyStorage = null;
+  wiping = true; // syncs or refreshes still running can't reopen it and write data back
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('blocked')), 5000);
     deleteDB(dbName, { blocked: () => {} }).then(
@@ -392,6 +404,9 @@ export async function wipeEverything(): Promise<void> {
         reject(e);
       },
     );
+  }).catch((e) => {
+    wiping = false; // didn't work: let the app carry on
+    throw e;
   });
   try {
     sessionStorage.clear();

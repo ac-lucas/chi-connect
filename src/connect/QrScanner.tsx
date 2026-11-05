@@ -50,7 +50,7 @@ export function QrScanner({ onResult }: Props) {
       try {
         await v.play();
       } catch {
-        // Some browsers need the muted + playsinline attributes, which are set; ignore and keep trying frames.
+        // Some browsers may refuse play() even with muted + playsinline set (verify per browser); keep trying frames.
       }
       setState('running');
       tick();

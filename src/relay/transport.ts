@@ -194,7 +194,7 @@ export class SimulatedTransport implements Transport {
   async send(mailboxId: string, ct: string, ttl: number) {
     if (!this.owners.has(mailboxId)) throw new RelayError('rejected'); // same rule as the relay: claimed mailboxes only
     const list = this.messages.get(mailboxId) ?? [];
-    list.push({ id: `m${++this.seq}`.padEnd(22, '0'), ct, created: this.now(), expires: this.now() + ttl * 1000 });
+    list.push({ id: `m${String(++this.seq).padStart(21, '0')}` /* unique: padEnd made m1 and m10 equal */, ct, created: this.now(), expires: this.now() + ttl * 1000 });
     this.messages.set(mailboxId, list);
   }
   async inbox(boxes: Box[]) {

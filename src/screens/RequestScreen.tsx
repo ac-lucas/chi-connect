@@ -44,8 +44,7 @@ export function RequestScreen({ profile, theirs, relay, onSent, onCancel }: Prop
     } catch (e) {
       const offline = e instanceof RelayError && e.problem === 'offline';
       const msg = offline ? 'You seem to be offline. Try again when you have a connection.' : 'That didn’t go through. Try again in a moment.';
-      setProblem(msg);
-      announce(msg);
+      setProblem(msg); // shown in a role=alert, which is read out: don't announce it twice
       setSending(false);
       inFlight.current = false;
     }

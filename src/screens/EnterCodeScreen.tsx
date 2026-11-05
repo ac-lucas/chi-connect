@@ -33,8 +33,7 @@ export function EnterCodeScreen({ relay, onFound, onCancel }: Props) {
         return;
       }
       const msg = 'That code didn’t work. Codes work once, for 2 minutes. Ask them for a new one.';
-      setProblem(msg);
-      announce(msg);
+      setProblem(msg); // shown in a role=alert, which is read out: don't announce it twice
     } catch (err) {
       const msg =
         err instanceof RelayError && err.problem === 'offline'
@@ -42,8 +41,7 @@ export function EnterCodeScreen({ relay, onFound, onCancel }: Props) {
           : err instanceof RelayError && err.problem === 'slow-down'
             ? 'Too many tries. Wait a few minutes, then try again.'
             : 'Something went wrong. Try again in a moment.';
-      setProblem(msg);
-      announce(msg);
+      setProblem(msg); // shown in a role=alert, which is read out: don't announce it twice
     } finally {
       setBusy(false);
     }

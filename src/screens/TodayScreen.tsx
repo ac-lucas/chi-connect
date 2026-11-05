@@ -15,6 +15,7 @@ import { InvitesPanel } from './InvitesPanel';
 import { SuggestionsPanel } from './SuggestionsPanel';
 import { announce } from '../ui/announce';
 import { useScreenHeading } from '../ui/useScreenHeading';
+import { keepingFocus } from '../ui/focus';
 import { ProgrammeNote } from './ProgrammeNote';
 
 interface Props {
@@ -62,6 +63,21 @@ export function TodayScreen({ name, programme, relay, myTopics, syncTick, onAddS
   const [energySetting, setEnergySetting] = useState<EnergySetting | undefined>(undefined);
   const [skipped, setSkipped] = useState<string[]>([]);
   const [protecting, setProtecting] = useState(false);
+  /** Calling off tells everyone and can't be undone: it asks first. Holds the schedule item ID being confirmed. */
+  const [confirmCallOff, setConfirmCallOff] = useState<string | null>(null);
+  const confirmCallOffBtn = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (confirmCallOff) confirmCallOffBtn.current?.focus();
+  }, [confirmCallOff]);
+  const keepMeetup = (id: string) => {
+    setConfirmCallOff(null);
+    setTimeout(() => document.querySelector<HTMLElement>(`[data-calloff="${id}"]`)?.focus(), 0);
+  };
+  const protectBtn = useRef<HTMLButtonElement>(null);
+  const closeProtect = () => {
+    setProtecting(false);
+    setTimeout(() => protectBtn.current?.focus(), 0); // back to the button that opened it
+  };
   const [changingEnergy, setChangingEnergy] = useState(false);
   const changeEnergyBtn = useRef<HTMLButtonElement>(null);
   const [invites, setInvites] = useState<Invite[]>([]);
@@ -175,13 +191,21 @@ export function TodayScreen({ name, programme, relay, myTopics, syncTick, onAddS
     await refresh();
   }
 
+  // Arrow keys move through radios and select as they go (WCAG 3.2.2): save each pick but keep the choices
+  // open; Done closes them. The screen reader reads each option as it's reached, so nothing is announced here.
   async function chooseEnergy(l: EnergyLevel) {
+    setChangingEnergy(true);
     await setSetting('energy', { level: l, setAt: Date.now() });
     await refresh();
+  }
+  function doneEnergy() {
     setChangingEnergy(false);
-    // The choices close up after a pick; keep keyboard focus nearby instead of losing it.
-    setTimeout(() => changeEnergyBtn.current?.focus(), 0);
-    announce(`Energy: ${ENERGY[l].label}. Your day’s been updated.`);
+    setTimeout(() => changeEnergyBtn.current?.focus(), 0); // keep focus where the choices were
+    announce(`Energy: ${ENERGY[level].label}. Your day’s been updated.`);
+  }
+  function openEnergy() {
+    setChangingEnergy(true);
+    setTimeout(() => document.querySelector<HTMLInputElement>('input[name="energy"]:checked')?.focus(), 0);
   }
 
   async function addProtected(kind: Exclude<ProtectedKind, 'focus'>, from: number, minutes: number) {
@@ -233,7 +257,7 @@ export function TodayScreen({ name, programme, relay, myTopics, syncTick, onAddS
             <span aria-hidden="true">{ENERGY[level].glyph} </span>
             Today’s energy: <strong>{ENERGY[level].label}</strong>
           </p>
-          <button type="button" class="button quiet" ref={changeEnergyBtn} aria-label="Change today’s energy" onClick={() => setChangingEnergy(true)}>
+          <button type="button" class="button quiet" ref={changeEnergyBtn} aria-label="Change today’s energy" onClick={openEnergy}>
             Change
           </button>
         </div>
@@ -253,6 +277,13 @@ export function TodayScreen({ name, programme, relay, myTopics, syncTick, onAddS
             </label>
           ))}
         </div>
+        {setToday && (
+          <div class="actions">
+            <button type="button" class="button secondary" onClick={doneEnergy}>
+              Done
+            </button>
+          </div>
+        )}
       </fieldset>
       )}
 
@@ -349,7 +380,7 @@ export function TodayScreen({ name, programme, relay, myTopics, syncTick, onAddS
                   </p>
                   <p class="day-title">
                     {r.kind === 'invite' && r.invite ? inviteTitle(r.invite, r.invite.acceptedIds.map(nameOf)) : title(r)}
-                    {r.kind === 'invite' && r.invite?.simulated && <span class="badge">Simulated</span>}
+                    {r.kind === 'invite' && r.invite?.simulated && <span class="badge"><span class="visually-hidden">, </span>Simulated</span>}
                   </p>
                   {r.kind === 'invite' && r.invite?.outgoing && (
                     <p class="muted">
@@ -395,13 +426,13 @@ export function TodayScreen({ name, programme, relay, myTopics, syncTick, onAddS
                           Invite
                         </button>
                       )}
-                      <button type="button" class="button quiet" aria-label={`Remove ${r.item.title}`} onClick={() => void removeItem(r.item)}>
+                      <button type="button" class="button quiet" aria-label={`Remove ${r.item.title}`} onClick={() => void keepingFocus(() => removeItem(r.item))}>
                         Remove
                       </button>
                     </>
                   )}
                   {r.kind === 'protected' && (
-                    <button type="button" class="button quiet" aria-label={`Remove ${r.item.title} at ${clock(r.item.start)}`} onClick={() => void removeItem(r.item)}>
+                    <button type="button" class="button quiet" aria-label={`Remove ${r.item.title} at ${clock(r.item.start)}`} onClick={() => void keepingFocus(() => removeItem(r.item))}>
                       Remove
                     </button>
                   )}
@@ -412,7 +443,7 @@ export function TodayScreen({ name, programme, relay, myTopics, syncTick, onAddS
                           Invite
                         </button>
                       )}
-                      <button type="button" class="button quiet" aria-label={`Skip ${r.brk.kind === 'meal' ? 'lunch' : 'breather'} at ${clock(r.brk.start)}`} onClick={() => void skip(r.brk)}>
+                      <button type="button" class="button quiet" aria-label={`Skip ${r.brk.kind === 'meal' ? 'lunch' : 'breather'} at ${clock(r.brk.start)}`} onClick={() => void keepingFocus(() => skip(r.brk))}>
                         Skip
                       </button>
                     </>
@@ -424,9 +455,35 @@ export function TodayScreen({ name, programme, relay, myTopics, syncTick, onAddS
                           Show your shape
                         </button>
                       )}
-                      <button type="button" class="button quiet" aria-label={`${r.invite?.outgoing ? 'Call off' : 'Leave'} ${r.item.title}`} onClick={() => void leaveOrCancel(r)}>
-                        {r.invite?.outgoing ? 'Call off' : 'Leave'}
-                      </button>
+                      {r.invite?.outgoing && confirmCallOff === r.item.id ? (
+                        <span role="group" aria-label={`Call off ${r.item.title}?`} class="inline-confirm">
+                          <span>Call it off? Everyone invited is told.</span>{' '}
+                          <button
+                            type="button"
+                            class="button danger"
+                            ref={confirmCallOffBtn}
+                            onClick={() => void keepingFocus(async () => {
+                              setConfirmCallOff(null);
+                              await leaveOrCancel(r);
+                            })}
+                          >
+                            Call off
+                          </button>
+                          <button type="button" class="button quiet" onClick={() => keepMeetup(r.item.id)}>
+                            Keep it
+                          </button>
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          class="button quiet"
+                          data-calloff={r.item.id}
+                          aria-label={`${r.invite?.outgoing ? 'Call off' : 'Leave'} ${r.item.title}`}
+                          onClick={() => (r.invite?.outgoing ? setConfirmCallOff(r.item.id) : void keepingFocus(() => leaveOrCancel(r)))}
+                        >
+                          {r.invite?.outgoing ? 'Call off' : 'Leave'}
+                        </button>
+                      )}
                     </>
                   )}
                 </div>
@@ -440,25 +497,27 @@ export function TodayScreen({ name, programme, relay, myTopics, syncTick, onAddS
         <button type="button" class="button" onClick={() => onAddSessions(day)}>
           Add sessions
         </button>
-        <button type="button" class="button secondary" aria-expanded={protecting} onClick={() => setProtecting((p) => !p)}>
+        <button type="button" class="button secondary" ref={protectBtn} aria-expanded={protecting} aria-controls="protect-form" onClick={() => setProtecting((p) => !p)}>
           Protect some time
         </button>
       </div>
 
-      {!programme.sample && <ProgrammeNote programme={programme} />}
-
-      {shapeFor && <MeetupShapeView inviteId={shapeFor.id} context={shapeFor.context} onClose={() => setShapeFor(null)} />}
-
+      {/* Right after its button, so reading and Tab order follow it. */}
       {protecting && (
         <ProtectForm
           day={day}
           onAdd={async (kind, from, minutes) => {
             await addProtected(kind, from, minutes);
-            setProtecting(false);
+            closeProtect();
           }}
-          onCancel={() => setProtecting(false)}
+          onCancel={closeProtect}
         />
       )}
+
+      {!programme.sample && <ProgrammeNote programme={programme} />}
+
+      {shapeFor && <MeetupShapeView inviteId={shapeFor.id} context={shapeFor.context} onClose={() => setShapeFor(null)} />}
+
     </section>
   );
 }
@@ -541,9 +600,12 @@ function ProtectForm({
   const [kind, setKind] = useState<'recharge' | 'off'>('recharge');
   const [from, setFrom] = useState(nowSlot);
   const [minutes, setMinutes] = useState(30);
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => heading.current?.focus(), []); // opening it moves focus into it
 
   return (
     <form
+      id="protect-form"
       class="card stack"
       aria-labelledby="protect-heading"
       onSubmit={(e) => {
@@ -551,7 +613,9 @@ function ProtectForm({
         void onAdd(kind, from, minutes);
       }}
     >
-      <h3 id="protect-heading">Protect some time</h3>
+      <h3 id="protect-heading" ref={heading} tabIndex={-1}>
+        Protect some time
+      </h3>
       <p class="hint">Only you see this. To anyone else you’re simply not free.</p>
       <fieldset>
         <legend>Kind</legend>

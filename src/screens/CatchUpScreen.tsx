@@ -3,6 +3,7 @@ import type { CatchUpItem } from '../model/types';
 import { dayLabel } from '../programme/programme';
 import { deleteCatchUp, listCatchUp } from '../storage/db';
 import { announce } from '../ui/announce';
+import { keepingFocus } from '../ui/focus';
 import { useScreenHeading } from '../ui/useScreenHeading';
 
 /** Catch up later (F23): sessions you couldn't be in, with their papers, for the train home. */
@@ -18,7 +19,7 @@ export function CatchUpScreen({ onBack }: { onBack: () => void }) {
     <section class="stack" aria-labelledby="catchup-heading">
       <div class="actions">
         <button type="button" class="button quiet" onClick={onBack}>
-          <span aria-hidden="true">←</span> You
+          <span aria-hidden="true">←</span> <span class="visually-hidden">Back to </span>You
         </button>
       </div>
       <div>
@@ -34,7 +35,7 @@ export function CatchUpScreen({ onBack }: { onBack: () => void }) {
           {list.map((c) => (
             <li key={c.programmeSessionId} class="card stack">
               <div>
-                <h3 class="session-title">{c.title}</h3>
+                <h3 class="session-title" dir="auto">{c.title}</h3>
                 <p class="muted">{dayLabel(c.start, 'long')}</p>
               </div>
               {c.papers && c.papers.length > 0 ? (
@@ -43,7 +44,7 @@ export function CatchUpScreen({ onBack }: { onBack: () => void }) {
                     <li key={p.url}>
                       <a href={p.url} target="_blank" rel="noopener noreferrer">
                         {p.title}
-                      </a>
+                      <span class="visually-hidden"> (opens in a new tab)</span></a>
                     </li>
                   ))}
                 </ul>
@@ -55,11 +56,11 @@ export function CatchUpScreen({ onBack }: { onBack: () => void }) {
                   type="button"
                   class="button quiet"
                   aria-label={`Remove ${c.title} from Catch up later`}
-                  onClick={async () => {
+                  onClick={() => keepingFocus(async () => {
                     await deleteCatchUp(c.programmeSessionId);
                     await load();
                     announce('Removed.');
-                  }}
+                  })}
                 >
                   Remove
                 </button>

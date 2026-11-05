@@ -6,6 +6,7 @@ import { acceptInvite, declineInvite, KIND_INFO, simulateIncoming } from '../sch
 import type { Transport } from '../relay/transport';
 import type { PlannedBreak } from '../schedule/breaks';
 import { announce } from '../ui/announce';
+import { keepingFocus } from '../ui/focus';
 import { ShapeBadge } from './ShapeCard';
 
 interface Props {
@@ -45,8 +46,7 @@ export function InvitesPanel({ invites, connections, items, relay, heldUntil, ne
       onChanged();
     } catch {
       const msg = 'That didn’t go through. You might be offline. Try again in a moment.';
-      setProblem(msg);
-      announce(msg);
+      setProblem(msg); // shown in a role=alert, which is read out: don't announce it twice
     } finally {
       setBusy(null);
     }
@@ -75,18 +75,18 @@ export function InvitesPanel({ invites, connections, items, relay, heldUntil, ne
   }
 
   return (
-    <section class="stack" aria-labelledby="invites-heading">
+    <section class="stack" aria-labelledby={invites.length > 0 ? 'invites-heading' : undefined} aria-label={invites.length > 0 ? undefined : 'Invites'}>
       {invites.length > 0 && <h3 id="invites-heading">Invites ({invites.length})</h3>}
       {invites.map((i) => {
         const clash = items.find((s) => s.type === 'session' && overlaps(s, i));
         const spot = describeSpot(i.meetingSpot);
         return (
-          <article key={i.id} class="card stack invite" aria-labelledby={`inv-${i.id}`}>
+          <article key={i.id} data-row class="card stack invite" aria-labelledby={`inv-${i.id}`}>
             <div>
               <h4 id={`inv-${i.id}`} class="invite-title">
                 <span aria-hidden="true">{KIND_INFO[i.kind].glyph} </span>
                 {KIND_INFO[i.kind].label} with {i.senderName}
-                {i.simulated && <span class="badge">Simulated</span>}
+                {i.simulated && <span class="badge"><span class="visually-hidden">, </span>Simulated</span>}
               </h4>
               <p class="day-time">
                 <span aria-hidden="true">{timeRange(i.start, i.end)}</span>
@@ -102,10 +102,10 @@ export function InvitesPanel({ invites, connections, items, relay, heldUntil, ne
             </p>
             {clash && <p class="hint">Heads-up: overlaps {clash.title}.</p>}
             <div class="actions">
-              <button type="button" class="button" disabled={busy === i.id} onClick={() => void yes(i)}>
+              <button type="button" class="button" disabled={busy === i.id} aria-describedby={`inv-${i.id}`} onClick={() => void keepingFocus(() => yes(i))}>
                 Yes
               </button>
-              <button type="button" class="button secondary" onClick={() => void no(i)}>
+              <button type="button" class="button secondary" aria-describedby={`inv-${i.id}`} onClick={() => void keepingFocus(() => no(i))}>
                 Not now
               </button>
             </div>
@@ -118,7 +118,7 @@ export function InvitesPanel({ invites, connections, items, relay, heldUntil, ne
         </p>
       )}
       {invites.length === 0 && demo.length > 0 && (
-        <div class="card stack try-it">
+        <div data-row class="card stack try-it">
           <p>
             <strong>Trying this on your own?</strong> See what it’s like to get an invite.
           </p>

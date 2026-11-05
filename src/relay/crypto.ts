@@ -1,5 +1,5 @@
 // Encryption for everything that goes through the relay. All of it happens on the phone with Web Crypto;
-// the relay only ever sees the output. Scheme (a proposal, reviewed before submission):
+// the relay only ever sees the output. Scheme:
 //  - AES-GCM-256, random 96-bit IV per message, the mailbox ID as additional data (binds a message to its mailbox).
 //  - Keys from HKDF-SHA-256 over a secret only the two people hold, with the purpose and mailbox in `info`.
 //  - Six-digit codes: PBKDF2 from the code. Only 20 bits, so this keeps the payload from casual view on the relay,

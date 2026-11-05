@@ -7,7 +7,7 @@ export function ProfileCard({ profile, headingLevel = 3 }: { profile: SharedProf
   return (
     <div class="card stack">
       <div>
-        <H>{profile.displayName || 'Your name'}</H>
+        <H dir="auto">{profile.displayName || 'Your name'}</H>
         {line && <p class="muted">{line}</p>}
       </div>
       {profile.tags && profile.tags.length > 0 && (
@@ -25,7 +25,7 @@ export function ProfileCard({ profile, headingLevel = 3 }: { profile: SharedProf
             <li key={href}>
               <a href={href} target="_blank" rel="noopener noreferrer">
                 {href.replace(/^https:\/\//, '').replace(/\/$/, '')}
-              </a>
+              <span class="visually-hidden"> (opens in a new tab)</span></a>
             </li>
           ))}
         </ul>

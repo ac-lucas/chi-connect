@@ -1,3 +1,4 @@
+import { createPortal } from 'preact/compat';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { findMeCard, SHAPE_PATHS, type ShapeCard } from '../schedule/findme';
 
@@ -52,6 +53,14 @@ export function ShapeCardView({ card, context, onClose }: { card: ShapeCard; con
   const [opener] = useState(() => document.activeElement as HTMLElement | null);
 
   useEffect(() => {
+    // A modal: the app behind it can't be reached while it's up. `inert` where supported, else hidden from
+    // assistive technology (the Tab trap below keeps keyboard focus in either case).
+    const app = document.getElementById('app');
+    const canInert = !!app && typeof (app as { inert?: unknown }).inert === 'boolean';
+    if (app) {
+      if (canInert) app.inert = true;
+      else app.setAttribute('aria-hidden', 'true');
+    }
     done.current?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -90,13 +99,18 @@ export function ShapeCardView({ card, context, onClose }: { card: ShapeCard; con
       document.removeEventListener('keydown', onKey);
       document.removeEventListener('visibilitychange', wake);
       void lock?.release().catch(() => {});
+      if (app) {
+        if (canInert) app.inert = false;
+        else app.removeAttribute('aria-hidden');
+      }
       if (opener?.isConnected) opener.focus();
     };
   }, []);
 
   const { bg, fg } = card.colour;
-  return (
-    <div class="findme" role="dialog" aria-modal="true" aria-labelledby="findme-word" aria-describedby="findme-lead" style={{ background: bg, color: fg }}>
+  // Rendered straight into <body>, outside #app, so making the app inert doesn't make the card inert too.
+  return createPortal(
+    <div class="findme" role="dialog" aria-modal="true" aria-labelledby="findme-word" aria-describedby="findme-lead" style={{ background: bg, color: fg, '--findme-fg': fg }}>
       <button type="button" ref={close} class="findme-close" aria-label="Close" style={{ color: fg, borderColor: fg }} onClick={onClose}>
         <span aria-hidden="true">✕</span>
       </button>
@@ -113,7 +127,8 @@ export function ShapeCardView({ card, context, onClose }: { card: ShapeCard; con
         Done
       </button>
       <p class="findme-brand">Pebble</p>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

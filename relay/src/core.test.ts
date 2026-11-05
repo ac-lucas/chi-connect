@@ -99,6 +99,25 @@ describe('mailboxes and messages', () => {
     expect(errorOf(await call('/v1/mailboxes/claim', { id: box, token: id('x') }))).toBe('taken');
   });
 
+  it("gives every mailbox its share of a reply, so one full mailbox can't starve the others", async () => {
+    const big = await owned('a');
+    const small = await owned('b');
+    await call('/v1/mailboxes/claim', { id: big.box, token: big.token });
+    await call('/v1/mailboxes/claim', { id: small.box, token: small.token });
+    for (let i = 0; i < 50; i++) await call(`/v1/mailboxes/${big.box}/messages`, { ct: 'a'.repeat(LIMITS.ctChars), ttl: 60 }, NOW, `j${i}`);
+    await call(`/v1/mailboxes/${small.box}/messages`, { ct: 'aW52aXRl', ttl: 60 }, NOW, 'friend');
+    const r = (await call('/v1/inbox', { boxes: [{ id: big.box, token: big.token }, { id: small.box, token: small.token }] })).body as { messages: Record<string, unknown[]>; more?: boolean };
+    expect(r.messages[small.box]).toHaveLength(1);
+    expect(r.more).toBe(true);
+  });
+
+  it('keeps the shared guess budget even under a flood of new clients', () => {
+    const limiter = new RateLimiter();
+    for (let i = 0; i < 2000; i++) limiter.hit('*', 'code-miss', NOW);
+    for (let i = 0; i < 250_000; i++) limiter.hit(`ip${i}`, 'any', NOW);
+    expect(limiter.spent('*', 'code-miss', NOW)).toBe(true);
+  });
+
   it('caps one inbox reply and says there is more', async () => {
     const boxes = [];
     for (const c of 'abcdefghijklm') {

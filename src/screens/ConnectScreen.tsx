@@ -14,6 +14,7 @@ import { putConnection } from '../storage/db';
 import { announce } from '../ui/announce';
 import { useScreenHeading } from '../ui/useScreenHeading';
 import { ProfileCard } from './ProfileCard';
+import { keepingFocus } from '../ui/focus';
 import { SharedTopics } from './SharedTopics';
 
 interface Props {
@@ -217,6 +218,7 @@ export function ConnectScreen({ profile, relay, initialCode, onOneWayCode, onCon
           <label class="label" for="my-link">
             Your link
           </label>
+          <p class="hint">Like the code, it stops working after {minutes} minutes.</p>
           <input id="my-link" type="text" readOnly value={mine.link} onFocus={(e) => e.currentTarget.select()} />
           {'clipboard' in navigator && (
             <button type="button" class="button secondary" onClick={copyLink}>
@@ -276,7 +278,7 @@ export function ConnectScreen({ profile, relay, initialCode, onOneWayCode, onCon
               <button type="button" class="button" onClick={connect} disabled={saving}>
                 {saving ? 'Connecting…' : 'Same shape. Connect'}
               </button>
-              <button type="button" class="button secondary" onClick={startOver}>
+              <button type="button" class="button secondary" onClick={() => void keepingFocus(startOver)}>
                 Different shape
               </button>
             </div>

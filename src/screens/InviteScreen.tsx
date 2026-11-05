@@ -179,7 +179,7 @@ export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
                 <input type="checkbox" checked={chosen.has(p.id)} onChange={() => toggle(p.id)} />
                 <span>
                   {p.profile.displayName}
-                  {p.demo && <span class="badge">Demo</span>}
+                  {p.demo && <span class="badge"><span class="visually-hidden">, </span>Demo</span>}
                 </span>
               </label>
             ))}

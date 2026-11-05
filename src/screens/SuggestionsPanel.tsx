@@ -10,6 +10,7 @@ import { alsoGoing, namesList } from '../schedule/overlap';
 import { findClashes, freeGaps, inSomething, pickWildcard, recentlyEnded, topicLine } from '../schedule/suggest';
 import { deleteScheduleItem, dismiss, getSetting, putCatchUp, putScheduleItem, setSetting } from '../storage/db';
 import { announce } from '../ui/announce';
+import { keepingFocus } from '../ui/focus';
 import type { InviteDraft } from './InviteScreen';
 
 interface Props {
@@ -120,7 +121,7 @@ export function SuggestionsPanel({ programme, items, connections, level, day, is
 
   const controls = (key: string) => (
     <div class="actions">
-      <button type="button" class="button quiet" onClick={() => void hide(key, 'Got it.')}>
+      <button type="button" class="button quiet" onClick={() => void keepingFocus(() => hide(key, 'Got it.'))}>
         Not now
       </button>
       <button type="button" class="button quiet" onClick={() => void snooze()}>
@@ -134,16 +135,16 @@ export function SuggestionsPanel({ programme, items, connections, level, day, is
   return (
     <section class="stack" aria-label="Suggestions">
       {clash && (
-        <div class="card stack heads-up">
+        <div data-row class="card stack heads-up">
           <p>
             <strong>Two at once:</strong> {clash[0].title} and {clash[1].title} overlap. Keep one, and the other goes to
             Catch up later{programme.sessions.find((s) => s.id === clash[1].programmeSessionId)?.papers?.length ? ' with its papers' : ''}.
           </p>
           <div class="actions">
-            <button type="button" class="button secondary" aria-label={`Keep ${clash[0].title}`} onClick={() => void keep(clash[0], clash[1])}>
+            <button type="button" class="button secondary" aria-label={`Keep ${clash[0].title}`} onClick={() => void keepingFocus(() => keep(clash[0], clash[1]))}>
               Keep {short(clash[0].title)}
             </button>
-            <button type="button" class="button secondary" aria-label={`Keep ${clash[1].title}`} onClick={() => void keep(clash[1], clash[0])}>
+            <button type="button" class="button secondary" aria-label={`Keep ${clash[1].title}`} onClick={() => void keepingFocus(() => keep(clash[1], clash[0]))}>
               Keep {short(clash[1].title)}
             </button>
             <button type="button" class="button quiet" onClick={() => void hide(`clash:${clash[0].id}:${clash[1].id}`, 'Keeping both.')}>
@@ -154,7 +155,7 @@ export function SuggestionsPanel({ programme, items, connections, level, day, is
       )}
 
       {showTalk && ended && (
-        <div class="card stack suggestion">
+        <div data-row class="card stack suggestion">
           <p>
             <strong>{ended.title}</strong> just ended. You and {namesList(going)} were both there. Ten minutes to compare notes?
           </p>
@@ -180,7 +181,7 @@ export function SuggestionsPanel({ programme, items, connections, level, day, is
       )}
 
       {showNudge && ended && (
-        <div class="card stack suggestion">
+        <div data-row class="card stack suggestion">
           <p>
             <strong>{ended.title}</strong> just ended.
             {endedSession && topicLine(programme, endedSession) ? ` ${topicLine(programme, endedSession)}` : ''}
@@ -193,7 +194,7 @@ export function SuggestionsPanel({ programme, items, connections, level, day, is
       )}
 
       {wildcard && (
-        <div class="card stack suggestion wildcard">
+        <div data-row class="card stack suggestion wildcard">
           <p>
             <strong>Wildcard.</strong> You’re Charged and have a free stretch {wildcard.gap.start <= now + MIN ? 'right now' : `from ${clock(wildcard.gap.start)}`}.
             {' '}<strong>{wildcard.session.title}</strong>
@@ -226,7 +227,7 @@ export function SuggestionsPanel({ programme, items, connections, level, day, is
             >
               Invite someone along
             </button>
-            <button type="button" class="button quiet" onClick={() => void hide(wildKey, 'No wildcard today.')}>
+            <button type="button" class="button quiet" onClick={() => void keepingFocus(() => hide(wildKey, 'No wildcard today.'))}>
               Not today
             </button>
           </div>

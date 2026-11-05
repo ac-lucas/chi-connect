@@ -73,6 +73,11 @@ export function ShareCodeScreen({ profile, relay, onDone }: Props) {
   useEffect(() => {
     if (six && sixLeft === 0) announce('Your six-digit code has expired. Get a new one if you need it.');
   }, [six, sixLeft === 0]);
+  // One warning before it runs out (the limit is a security limit: a short-lived code is hard to guess).
+  useEffect(() => {
+    if (six && sixLeft === 20) announce('20 seconds left on your code. “New code” makes another.');
+  }, [six, sixLeft === 20]);
+  const leftSpoken = sixLeft >= 60 ? `${Math.floor(sixLeft / 60)} minute${sixLeft >= 120 ? 's' : ''} ${sixLeft % 60} seconds left` : `${sixLeft} seconds left`;
 
   async function getSix() {
     if (!link) return;
@@ -90,8 +95,7 @@ export function ShareCodeScreen({ profile, relay, onDone }: Props) {
           : e instanceof RelayError && e.problem === 'slow-down'
             ? 'That’s a lot of codes. Wait a few minutes and try again.'
             : 'Couldn’t make a code just now. The QR code still works.';
-      setProblem(msg);
-      announce(msg);
+      setProblem(msg); // shown in a role=alert, which is read out: don't announce it twice
     } finally {
       setBusy(false);
     }
@@ -172,7 +176,7 @@ export function ShareCodeScreen({ profile, relay, onDone }: Props) {
               <span aria-hidden="true">
                 {Math.floor(sixLeft / 60)}:{String(sixLeft % 60).padStart(2, '0')} more
               </span>
-              <span class="visually-hidden">2 minutes</span>.
+              <span class="visually-hidden">2 minutes, {leftSpoken}</span>.
             </p>
           </>
         ) : (

@@ -31,7 +31,11 @@
   }
 }
 
-html { font-size: 100%; }
+html {
+  font-size: 100%;
+  /* Keep a focused control clear of the fixed tab bar when the browser scrolls it into view (WCAG 2.4.11). */
+  scroll-padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
+}
 *, *::before, *::after { box-sizing: border-box; }
 body {
   margin: 0;
@@ -117,7 +121,7 @@ button, .button { font: inherit; }
 .hint { color: var(--muted); font-size: 0.9375rem; }
 .error { color: var(--danger); font-weight: 600; }
 .error::before { content: '⚠ '; }
-input[type='text'], input[type='url'], input[type='search'], textarea {
+input[type='text'], input[type='url'], input[type='search'], input[type='date'], textarea {
   font: inherit; color: var(--fg); background: var(--surface);
   min-height: var(--min-target); padding: 0.5rem 0.75rem;
   border: 2px solid var(--border); border-radius: 0.5rem; width: 100%;
@@ -139,6 +143,8 @@ legend { font-weight: 700; padding: 0 0.25rem; }
 }
 .chip[aria-pressed='true'], .chip.selected { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600; }
 .chip.static { cursor: default; }
+/* Disabled (topic limit reached): a dashed outline, so it doesn't look tappable. */
+.chip:disabled { border-style: dashed; color: var(--muted); cursor: not-allowed; }
 .chip .x { font-weight: 700; }
 
 /* Day rhythm legend */
@@ -188,7 +194,8 @@ details summary { cursor: pointer; min-height: var(--min-target); display: flex;
 .energy-option input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .energy-option:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 2px; }
 .energy-option.chosen { border-color: var(--accent); background: var(--accent-soft); }
-.energy-option.chosen .energy-label::after { content: '  ✓'; }
+/* Decorative tick: the radio already says "checked". The `/ ''` alt text hides it from screen readers where supported. */
+.energy-option.chosen .energy-label::after { content: '  ✓'; content: '  ✓' / ''; }
 .energy-glyph { grid-row: span 2; font-size: 1.5rem; text-align: center; }
 .energy-label { font-weight: 700; }
 .energy-line { color: var(--muted); font-size: 0.9375rem; }
@@ -239,12 +246,16 @@ select { font: inherit; color: var(--fg); background: var(--surface); min-height
 .spot-cell input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .spot-cell:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 2px; }
 .spot-cell.on { border-color: var(--accent); background: var(--accent-soft); font-weight: 700; }
-.spot-cell.on span::before { content: '✓ '; }
+.spot-cell.on span::before { content: '✓ '; content: '✓ ' / ''; }
 .findme {
-  position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; align-items: center;
+  justify-content: safe center; /* centred, but never cut off at the top when it's taller than the screen */
+  overflow-y: auto; /* 200% text or landscape: scroll rather than clip (WCAG 1.4.4, 1.4.10) */
   gap: 0.75rem; padding: 1.5rem; text-align: center;
   margin: 0 !important; /* it sits inside stacked sections; never take their spacing */
 }
+/* The ring takes the card's own text colour: always at least 5.2:1 against the card, whatever its colour. */
+.findme :focus-visible { outline-color: var(--findme-fg, currentColor); }
 .findme-lead { font-size: 1.125rem; margin: 0; }
 .findme .shape-graphic { width: min(70vw, 48vh); height: auto; }
 .findme-context { margin: 0; font-size: 1.125rem; font-weight: 600; }
@@ -256,7 +267,7 @@ select { font: inherit; color: var(--fg); background: var(--surface); min-height
   width: 3rem; height: 3rem; border-radius: 999px; border: 2px solid; background: transparent;
   font: inherit; font-size: 1.375rem; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center;
 }
-.findme-brand { position: absolute; bottom: 1rem; margin: 0; opacity: 0.85; font-weight: 700; }
+.findme-brand { margin: auto 0 0; padding-top: 0.5rem; opacity: 0.85; font-weight: 700; } /* in the flow: never over Done */
 
 .also-going { margin: 0; color: var(--accent); font-weight: 600; }
 .button.inline { min-height: var(--min-target); padding: 0 0.25rem; display: inline-flex; }

@@ -10,7 +10,7 @@ import { download, toCsv, toIcs, toVCard } from '../export/exports';
 import { announce } from '../ui/announce';
 import { useScreenHeading } from '../ui/useScreenHeading';
 
-/** C Wrapped (F26): your own conference in a few cards. Built on this phone from your data; nothing is sent. */
+/** Recap (F26): your own week in a few cards. Built on this phone from your data; nothing is sent. */
 export function RecapScreen({ programme, onBack }: { programme: Programme; onBack: () => void }) {
   const heading = useScreenHeading<HTMLHeadingElement>();
   const [recap, setRecap] = useState<Recap | null>(null);
@@ -54,7 +54,7 @@ export function RecapScreen({ programme, onBack }: { programme: Programme; onBac
     <section class="stack" aria-labelledby="recap-heading">
       <div class="actions">
         <button type="button" class="button quiet" onClick={onBack}>
-          <span aria-hidden="true">←</span> You
+          <span aria-hidden="true">←</span> <span class="visually-hidden">Back to </span>You
         </button>
       </div>
       <div>

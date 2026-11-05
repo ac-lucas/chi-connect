@@ -10,6 +10,7 @@ import { demoSessionIds, shareSessionsIfChanged } from '../schedule/overlap';
 import { announce } from '../ui/announce';
 import { useScreenHeading } from '../ui/useScreenHeading';
 import { ProfileCard } from './ProfileCard';
+import { keepingFocus } from '../ui/focus';
 import { SharedTopics } from './SharedTopics';
 
 interface Props {
@@ -70,8 +71,7 @@ export function PersonScreen({ connection: c, myTags, justConnected, relay, prog
       onChanged();
     } catch (e) {
       const msg = e instanceof RelayError && e.problem === 'offline' ? 'You seem to be offline. Try again when you have a connection.' : 'That didn’t go through. Try again in a moment.';
-      setProblem(msg);
-      announce(msg);
+      setProblem(msg); // shown in a role=alert, which is read out: don't announce it twice
     } finally {
       setBusy(false);
     }
@@ -95,13 +95,13 @@ export function PersonScreen({ connection: c, myTags, justConnected, relay, prog
     <section class="stack" aria-labelledby="person-heading">
       <div class="actions">
         <button type="button" class="button quiet" onClick={onBack}>
-          <span aria-hidden="true">←</span> People
+          <span aria-hidden="true">←</span> <span class="visually-hidden">Back to </span>People
         </button>
       </div>
       <div>
         <h2 id="person-heading" ref={heading} tabIndex={-1}>
           {name}
-          {c.demo && <span class="badge">Demo</span>}
+          {c.demo && <span class="badge"><span class="visually-hidden">, </span>Demo</span>}
         </h2>
         {c.state === 'pending-received' ? (
           <p class="lede">{name} would like to connect.</p>
@@ -127,10 +127,10 @@ export function PersonScreen({ connection: c, myTags, justConnected, relay, prog
             </p>
           )}
           <div class="actions">
-            <button type="button" class="button" onClick={approve} disabled={busy || !relay}>
+            <button type="button" class="button" onClick={() => void keepingFocus(approve)} disabled={busy || !relay}>
               {busy ? 'Connecting…' : 'Yes, connect'}
             </button>
-            <button type="button" class="button secondary" onClick={() => dismiss('Request removed.')}>
+            <button type="button" class="button secondary" onClick={() => void keepingFocus(() => dismiss('Request removed.'))}>
               Not now
             </button>
           </div>
@@ -162,7 +162,7 @@ export function PersonScreen({ connection: c, myTags, justConnected, relay, prog
             <>
               <p>
                 You’re both going to {both.length === 1 ? 'this' : `these ${both.length}`}
-                {c.demo && <span class="badge">Simulated</span>}:
+                {c.demo && <span class="badge"><span class="visually-hidden">, </span>Simulated</span>}:
               </p>
               <ul class="both">
                 {both.slice(0, 8).map((s) => (
@@ -192,7 +192,7 @@ export function PersonScreen({ connection: c, myTags, justConnected, relay, prog
               <button type="button" class="button danger" ref={confirmRef} onClick={remove}>
                 Remove
               </button>
-              <button type="button" class="button secondary" onClick={() => setConfirming(false)}>
+              <button type="button" class="button secondary" onClick={() => void keepingFocus(() => setConfirming(false))}>
                 Keep
               </button>
             </div>

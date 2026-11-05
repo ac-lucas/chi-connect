@@ -32,6 +32,14 @@ export function AddSessionsScreen({ programme, initialDay, onDone }: Props) {
   }, []);
 
   const results = useMemo(() => searchSessions(programme, query, day), [programme, query, day]);
+  // The spoken result count waits for a pause in typing, so it isn't read out on every keystroke.
+  const countText =
+    results.length === 0 ? 'No sessions match.' : results.length >= MAX_RESULTS ? `Showing the first ${MAX_RESULTS}. Search to narrow it down.` : `${results.length} sessions.`;
+  const [spokenCount, setSpokenCount] = useState(countText);
+  useEffect(() => {
+    const t = setTimeout(() => setSpokenCount(countText), 600);
+    return () => clearTimeout(t);
+  }, [countText]);
   const savedBySession = new Map(saved.map((s) => [s.programmeSessionId, s]));
 
   // Taps on a session whose save is still in flight are ignored, so a double tap can't save it twice.
@@ -90,7 +98,7 @@ export function AddSessionsScreen({ programme, initialDay, onDone }: Props) {
       </div>
 
       <p class="visually-hidden" role="status">
-        {results.length === 0 ? 'No sessions match.' : results.length >= MAX_RESULTS ? `Showing the first ${MAX_RESULTS}. Search to narrow it down.` : `${results.length} sessions.`}
+        {spokenCount}
       </p>
       {results.length >= MAX_RESULTS && <p class="hint">Showing the first {MAX_RESULTS}, earliest first. Search to narrow it down.</p>}
       {results.length === 0 ? (
@@ -108,7 +116,7 @@ export function AddSessionsScreen({ programme, initialDay, onDone }: Props) {
                     <span class="visually-hidden">{timeRangeSpoken(s.start, s.end)}</span>
                     {s.room && <span class="muted"> · {s.room}</span>}
                   </p>
-                  <h3 class="session-title">{s.title}</h3>
+                  <h3 class="session-title" dir="auto">{s.title}</h3>
                   <p class="muted session-meta">
                     {FORMAT_LABELS[s.format]}
                     {s.topics.length > 0 && ` · ${s.topics.map((t) => knownTagById(t)?.label ?? t).join(', ')}`}
@@ -123,7 +131,7 @@ export function AddSessionsScreen({ programme, initialDay, onDone }: Props) {
                   type="button"
                   class={`button ${isSaved ? '' : 'secondary'}`}
                   aria-pressed={isSaved}
-                  aria-label={`Add ${s.title}`}
+                  aria-label={`${isSaved ? "Added" : "Add"} ${s.title}`}
                   onClick={() => void toggle(s)}
                 >
                   {isSaved ? (

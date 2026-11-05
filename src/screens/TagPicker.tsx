@@ -2,6 +2,7 @@ import { useMemo, useState } from 'preact/hooks';
 import { knownTag, resolveTag, searchKnownTags } from '../model/tags';
 import { LIMITS } from '../model/text';
 import type { Tag } from '../model/types';
+import { keepingFocus } from '../ui/focus';
 import { announce } from '../ui/announce';
 
 interface Props {
@@ -50,7 +51,7 @@ export function TagPicker({ value, onChange }: Props) {
           <ul class="chips" aria-labelledby="my-topics">
             {value.map((t) => (
               <li key={t.key}>
-                <button type="button" class="chip selected" onClick={() => remove(t)} aria-label={`Remove ${t.label}`}>
+                <button type="button" class="chip selected" onClick={() => void keepingFocus(() => remove(t))} aria-label={`Remove ${t.label}`}>
                   <span>{t.label}</span>
                   <span class="x" aria-hidden="true">×</span>
                 </button>

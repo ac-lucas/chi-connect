@@ -1,6 +1,6 @@
 // Preview mode: when a programme is already over (for example last year's), move its days so the first one
 // is the preview's anchor day, keeping each session's wall-clock time from the programme's own time zone.
-// A 9:00 session in Barcelona shows at 9:00 on the matching preview day, wherever the phone is.
+// A 9:00 session in the programme's own time zone shows at 9:00 on the matching preview day, wherever the phone is.
 // Labelled as a preview wherever it shows.
 import type { Programme } from './types';
 

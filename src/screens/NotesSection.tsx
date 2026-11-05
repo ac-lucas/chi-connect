@@ -3,6 +3,7 @@ import { randomId } from '../model/ids';
 import { cleanText, LIMITS } from '../model/text';
 import type { Connection, FollowUp, Note } from '../model/types';
 import { deleteFollowUp, deleteNote, listFollowUps, listNotes, putFollowUp, putNote } from '../storage/db';
+import { holdFocus, keepingFocus } from '../ui/focus';
 import { announce } from '../ui/announce';
 
 /** One-tap chips for quick capture (F07). Short, about the moment, never about the person's looks or background. */
@@ -46,6 +47,7 @@ export function NotesSection({ connection: c, quickCapture }: Props) {
 
   async function saveNote(e: Event) {
     e.preventDefault();
+    const restore = holdFocus(); // quick capture closes after saving: keep focus in the notes area
     const clean = cleanText(text, LIMITS.note);
     if (!clean && chips.size === 0) return;
     await putNote({ id: randomId(), connectionId: c.id, text: clean, chips: [...chips], createdAt: Date.now() });
@@ -57,6 +59,7 @@ export function NotesSection({ connection: c, quickCapture }: Props) {
     setCaptured(true);
     await load();
     announce(chips.has(FOLLOW_UP_CHIP) ? 'Note saved, and a follow-up added.' : 'Note saved.');
+    restore();
   }
 
   async function addFollowUp(e: Event) {
@@ -101,7 +104,7 @@ export function NotesSection({ connection: c, quickCapture }: Props) {
           Save note
         </button>
         {quickCapture && !captured && (
-          <button type="button" class="button quiet" onClick={() => setCaptured(true)}>
+          <button type="button" class="button quiet" onClick={() => void keepingFocus(() => setCaptured(true))}>
             Skip
           </button>
         )}
@@ -133,11 +136,11 @@ export function NotesSection({ connection: c, quickCapture }: Props) {
                   type="button"
                   class="button quiet"
                   aria-label={`Delete follow-up: ${f.text}`}
-                  onClick={async () => {
+                  onClick={() => keepingFocus(async () => {
                     await deleteFollowUp(f.id);
                     await load();
                     announce('Deleted.');
-                  }}
+                  })}
                 >
                   Delete
                 </button>
@@ -182,11 +185,11 @@ export function NotesSection({ connection: c, quickCapture }: Props) {
                     type="button"
                     class="button quiet"
                     aria-label="Delete this note"
-                    onClick={async () => {
+                    onClick={() => keepingFocus(async () => {
                       await deleteNote(n.id);
                       await load();
                       announce('Note deleted.');
-                    }}
+                    })}
                   >
                     Delete
                   </button>

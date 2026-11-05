@@ -23,7 +23,7 @@ export function ProgrammeNote({ programme }: { programme: Programme }) {
           {programme.credit}{' '}
           <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">
             Licence
-          </a>
+          <span class="visually-hidden"> (opens in a new tab)</span></a>
         </p>
       )}
     </div>
