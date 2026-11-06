@@ -3,6 +3,7 @@ import { CloseButton } from '../ui/CloseButton';
 import { useRef, useState } from 'preact/hooks';
 import { decodeCode, DecodeError, type ConnectPayload } from '../connect/payload';
 import { redeemSixDigitCode } from '../relay/protocol';
+import { getIntros } from '../storage/db';
 import { RelayError, type Transport } from '../relay/transport';
 import { announce } from '../ui/announce';
 import { useScreenHeading } from '../ui/useScreenHeading';
@@ -15,7 +16,14 @@ const SCAN_PROBLEMS: Record<string, string> = {
   'newer-version': 'Their app is a newer version. Reload this page and try again.',
   'older-version': 'Their app needs an update. Ask them to reload Pebble, then share again.',
   'face-to-face': 'That’s an older kind of code. Ask them to open Share.',
+  own: 'That’s your own code. Scan theirs instead.',
 };
+
+/** Your own code (or one pointing at your own mailbox): never send a request to yourself. */
+async function isOwn(p: ConnectPayload): Promise<boolean> {
+  const mine = await getIntros();
+  return mine.some((i) => i.nonce === p.nonce || (!!p.mailboxId && i.mailboxId === p.mailboxId));
+}
 
 interface Props {
   relay: Transport;
@@ -43,6 +51,10 @@ export function EnterCodeScreen({ relay, onFound, onCancel }: Props) {
     setProblem(null);
     try {
       const theirs = await redeemSixDigitCode(relay, digits);
+      if (theirs && (await isOwn(theirs))) {
+        setProblem('That’s your own code. Ask them for theirs.');
+        return;
+      }
       if (theirs) {
         onFound(theirs);
         return;
@@ -67,6 +79,7 @@ export function EnterCodeScreen({ relay, onFound, onCancel }: Props) {
     try {
       const p = await decodeCode(text);
       if (p.mode === 'f') throw new Error('face-to-face');
+      if (await isOwn(p)) throw new Error('own');
       onFound(p);
       return true;
     } catch (e) {

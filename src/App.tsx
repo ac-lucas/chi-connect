@@ -122,8 +122,9 @@ export function App() {
   }, [profile, pendingCode]);
 
   // Browser and phone Back close the open screen instead of leaving the app. Each screen opened from the tabs adds
-  // one history entry; moving from one screen to another replaces it, so Back always returns to the tabs. Only
-  // in-app state is used (no URL changes, no server routing).
+  // one history entry; moving from one screen to another replaces it, so Back always returns to the tabs. The
+  // entry holds only a marker, never the screen's content (which can include other people's profiles and keys):
+  // browsers may keep session history on disk to restore tabs (verify per browser). No URL changes, no routing.
   function setScreen(s: Screen) {
     const depth: number = history.state?.pebbleDepth ?? 0;
     if (s.kind === 'tabs') {
@@ -131,14 +132,17 @@ export function App() {
       setScreenState(s);
       return;
     }
-    if (depth > 0) history.replaceState({ pebbleDepth: depth, pebble: s }, '');
-    else history.pushState({ pebbleDepth: 1, pebble: s }, '');
+    if (depth === 0) history.pushState({ pebbleDepth: 1 }, '');
     setScreenState(s);
   }
   useEffect(() => {
+    // Reloaded while a screen was open: that screen is gone, so drop its marker.
+    if (history.state?.pebbleDepth) history.replaceState(null, '');
     const onPop = (e: PopStateEvent) => {
-      const s = (e.state?.pebble as Screen | undefined) ?? { kind: 'tabs' };
-      setScreenState(s);
+      // Back to the tabs entry: close the screen. Forward onto a screen's entry: its content isn't kept, so go
+      // straight back to the tabs.
+      if (e.state?.pebbleDepth) history.back();
+      else setScreenState({ kind: 'tabs' });
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
