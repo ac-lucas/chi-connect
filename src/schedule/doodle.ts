@@ -86,30 +86,146 @@ function seeded(seed: string): () => number {
   };
 }
 
+/** Shapes on a -1..1 box, as one or more strokes. Simple enough to say out loud: "mine's the house and the bolt". */
+type Local = [number, number][];
+const TAU = Math.PI * 2;
+const curve = (n: number, f: (t: number) => [number, number]): Local => Array.from({ length: n + 1 }, (_, i) => f(i / n));
+const poly = (...pts: [number, number][]): Local => pts;
+
+const SHAPES: Record<string, (r: () => number) => Local[]> = {
+  circle: () => [curve(36, (t) => [Math.cos(t * TAU), Math.sin(t * TAU)])],
+  square: () => [poly([-0.85, -0.85], [0.85, -0.85], [0.85, 0.85], [-0.85, 0.85], [-0.85, -0.85])],
+  triangle: () => [poly([0, -0.95], [0.95, 0.8], [-0.95, 0.8], [0, -0.95])],
+  diamond: () => [poly([0, -1], [0.7, 0], [0, 1], [-0.7, 0], [0, -1])],
+  star: () => [curve(10, (t) => {
+    const a = t * TAU - Math.PI / 2;
+    const rr = Math.round(t * 10) % 2 ? 0.42 : 1;
+    return [Math.cos(a) * rr, Math.sin(a) * rr];
+  })],
+  spiral: () => [curve(44, (t) => [t * Math.cos(t * 2 * TAU), t * Math.sin(t * 2 * TAU)])],
+  zigzag: () => [poly([-1, 0.35], [-0.6, -0.35], [-0.2, 0.35], [0.2, -0.35], [0.6, 0.35], [1, -0.35])],
+  wave: () => [curve(32, (t) => [-1 + 2 * t, 0.4 * Math.sin(t * 2 * TAU)])],
+  plus: () => [poly([0, -0.9], [0, 0.9]), poly([-0.9, 0], [0.9, 0])],
+  heart: () => [curve(40, (t) => {
+    const a = t * TAU;
+    return [(16 * Math.sin(a) ** 3) / 17, -(13 * Math.cos(a) - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a)) / 17];
+  })],
+  cloud: () => [curve(48, (t) => {
+    const a = t * TAU;
+    const rr = 0.8 + 0.2 * Math.abs(Math.sin(a * 3.5));
+    return [Math.cos(a) * rr, Math.sin(a) * rr * 0.62];
+  })],
+  bolt: () => [poly([0.25, -1], [-0.45, 0.1], [0.05, 0.1], [-0.25, 1], [0.5, -0.15], [0, -0.15], [0.25, -1])],
+  arrow: () => [poly([-1, 0], [0.95, 0]), poly([0.45, -0.45], [0.95, 0], [0.45, 0.45])],
+  flower: () => [curve(72, (t) => {
+    const a = t * Math.PI;
+    const rr = Math.cos(5 * a);
+    return [rr * Math.cos(a), rr * Math.sin(a)];
+  })],
+  dots: () => [[[-0.6, 0]], [[0, 0]], [[0.6, 0]]],
+  loop: (r) => {
+    const f = 1 + Math.floor(r() * 2);
+    const ph = r() * TAU;
+    return [curve(48, (t) => [Math.sin(f * t * TAU * 0.9 + ph), Math.sin((f + 1) * t * TAU * 0.9)])];
+  },
+  house: () => [poly([-0.9, -0.05], [0, -0.95], [0.9, -0.05]), poly([-0.65, -0.05], [-0.65, 0.9], [0.65, 0.9], [0.65, -0.05])],
+  sun: () => [
+    curve(24, (t) => [0.45 * Math.cos(t * TAU), 0.45 * Math.sin(t * TAU)]),
+    ...Array.from({ length: 8 }, (_, i): Local => {
+      const a = (i / 8) * TAU;
+      return [[0.65 * Math.cos(a), 0.65 * Math.sin(a)], [0.95 * Math.cos(a), 0.95 * Math.sin(a)]];
+    }),
+  ],
+  smile: () => [curve(20, (t) => [Math.cos(Math.PI * (0.15 + 0.7 * t)) * 0.8, 0.15 + Math.sin(Math.PI * (0.15 + 0.7 * t)) * 0.55]), [[-0.35, -0.35]], [[0.35, -0.35]]],
+  moon: () => [[
+    ...curve(24, (t): [number, number] => [Math.cos(Math.PI * (0.3 + 1.4 * t)), Math.sin(Math.PI * (0.3 + 1.4 * t))]),
+    ...curve(20, (t): [number, number] => {
+      const a = 1.586 + t * (TAU - 3.172);
+      return [0.6 + 0.809 * Math.cos(a), -0.809 * Math.sin(a)];
+    }),
+  ]],
+  leaf: () => [
+    [...curve(20, (t): [number, number] => [-1 + 2 * t, -0.45 * Math.sin(Math.PI * t)]), ...curve(20, (t): [number, number] => [1 - 2 * t, 0.45 * Math.sin(Math.PI * t)])],
+    poly([-0.8, 0], [0.8, 0]),
+  ],
+  drop: () => [curve(40, (t) => {
+    const a = t * TAU;
+    return [0.85 * Math.sin(a) * Math.sin(a / 2), -Math.cos(a)];
+  })],
+  mountains: () => [poly([-1, 0.6], [-0.45, -0.45], [0, 0.15], [0.45, -0.75], [1, 0.6], [-1, 0.6])],
+  target: () => [curve(32, (t) => [Math.cos(t * TAU), Math.sin(t * TAU)]), curve(20, (t) => [0.45 * Math.cos(t * TAU), 0.45 * Math.sin(t * TAU)]), [[0, 0]]],
+  infinity: () => [curve(48, (t) => {
+    const a = t * TAU;
+    const d = 1 + Math.sin(a) ** 2;
+    return [Math.cos(a) / d, (Math.sin(a) * Math.cos(a)) / d];
+  })],
+};
+export const SHAPE_NAMES = Object.keys(SHAPES);
+
+/** Where the shapes go: one big with a small one beside or above it, two side by side, or three. [x, y, scale]. */
+const LAYOUTS: [number, number, number][][] = [
+  [[-0.12, 0.05, 0.72], [0.68, -0.62, 0.26]],
+  [[-0.5, 0, 0.44], [0.5, 0, 0.44]],
+  [[0, -0.48, 0.42], [0, 0.5, 0.42]],
+  [[-0.52, -0.42, 0.36], [0.52, -0.42, 0.36], [0, 0.48, 0.36]],
+  [[0, 0.14, 0.6], [0, -0.78, 0.2]],
+  [[0, -0.62, 0.3], [0, 0, 0.3], [0, 0.62, 0.3]],
+  [[-0.55, -0.55, 0.33], [0, 0, 0.33], [0.55, 0.55, 0.33]],
+];
+
+/** Add points along each segment so the hand wobble looks drawn, not jagged. */
+function densify(line: Local, step = 0.12): Local {
+  const out: Local = [];
+  for (let i = 0; i < line.length; i++) {
+    const a = line[i]!;
+    out.push(a);
+    const b = line[i + 1];
+    if (!b) break;
+    const n = Math.floor(Math.hypot(b[0] - a[0], b[1] - a[1]) / step);
+    for (let k = 1; k < n; k++) out.push([a[0] + ((b[0] - a[0]) * k) / n, a[1] + ((b[1] - a[1]) * k) / n]);
+  }
+  return out;
+}
+
+/** Which shapes and layout a seed makes (the same on every phone). Exposed for tests. */
+export function doodleRecipe(seed: string): { layout: number; shapes: string[] } {
+  const r = seeded(`pebble-doodle-v2:${seed}`);
+  const layout = Math.floor(r() * LAYOUTS.length);
+  const pool = [...SHAPE_NAMES];
+  const shapes: string[] = [];
+  for (let i = 0; i < LAYOUTS[layout]!.length; i++) shapes.push(pool.splice(Math.floor(r() * pool.length), 1)[0]!);
+  return { layout, shapes };
+}
+
 /**
- * A scribble made from a seed: one looping line built from a few overlaid waves, so each seed gives a clearly
- * different, hand-ish curve. Used when someone doesn't draw, for "Draw one for me", and for invites from before
- * doodles existed (seeded by the invite ID, so everyone in the meetup still sees the same one).
+ * A drawing made from a seed: two or three simple shapes (out of 25) in one of seven layouts, each a little tilted
+ * and wobbly so it reads as hand-drawn. Thousands of combinations that are easy to tell apart at a glance. Used
+ * when someone doesn't draw, for "Make one for me", for demo people, and for invites from before doodles existed
+ * (seeded by the invite ID, so everyone in the meetup sees the same one).
  */
 export function generateDoodle(seed: string): Doodle {
-  const r = seeded(`pebble-doodle-v1:${seed}`);
-  const fx = 1 + Math.floor(r() * 3);
-  const fy = fx + 1 + Math.floor(r() * 2);
-  const px = r() * Math.PI * 2;
-  const py = r() * Math.PI * 2;
-  const wobble = 0.12 + r() * 0.18;
-  const wf = 5 + Math.floor(r() * 4);
-  const turns = 0.75 + r() * 0.25; // not quite closed, so it reads as drawn
-  const n = 90;
-  const pts: Point[] = [];
-  for (let k = 0; k < n; k++) {
-    const t = (k / (n - 1)) * Math.PI * 2 * turns;
-    const w = 1 + wobble * Math.sin(wf * t + px);
-    const x = 128 + 100 * w * Math.sin(fx * t + px) * 0.95;
-    const y = 128 + 100 * w * Math.sin(fy * t + py) * 0.95;
-    pts.push([clampByte(x), clampByte(y)]);
-  }
-  return [thin(pts, 2)];
+  const { layout, shapes } = doodleRecipe(seed);
+  const r = seeded(`pebble-doodle-v2-hand:${seed}`);
+  const out: Point[][] = [];
+  shapes.forEach((name, i) => {
+    const [cx, cy, scale] = LAYOUTS[layout]![i]!;
+    const s = scale * (0.92 + r() * 0.16);
+    const tilt = (r() - 0.5) * 0.6;
+    const cos = Math.cos(tilt);
+    const sin = Math.sin(tilt);
+    for (const line of SHAPES[name]!(r)) {
+      const pts = (line.length > 1 ? densify(line) : line).map(([x, y]): Point => {
+        const jx = line.length > 1 ? (r() - 0.5) * 0.06 : 0;
+        const jy = line.length > 1 ? (r() - 0.5) * 0.06 : 0;
+        const rx = (x + jx) * cos - (y + jy) * sin;
+        const ry = (x + jx) * sin + (y + jy) * cos;
+        return [clampByte(128 + (cx + rx * s) * 105), clampByte(128 + (cy + ry * s) * 105)];
+      });
+      const kept = pts.length > 1 ? thin(pts, 2) : pts;
+      if (kept.length) out.push(kept.slice(0, DOODLE_LIMITS.strokePoints));
+    }
+  });
+  return out.slice(0, DOODLE_LIMITS.strokes);
 }
 
 /**
@@ -163,6 +279,16 @@ export const PROMPTS = {
   hobby: 'what you do on a day off',
   talent: 'your hidden talent',
   place: 'a place you love',
+  superpower: 'a superpower you’d pick',
+  kid: 'what you wanted to be as a kid',
+  season: 'your favorite season',
+  smell: 'a smell you love',
+  gift: 'the best gift you’ve ever gotten',
+  emoji: 'your favorite emoji',
+  outfit: 'your favorite outfit',
+  bottle: 'your water bottle',
+  sleep: 'your sleeping position',
+  fruit: 'your favorite fruit',
 } as const;
 /**
  * Keys that were used once and removed (Nov 23, 2026). Never give them to a new prompt: an invite sent with one
@@ -173,11 +299,20 @@ export type PromptKey = keyof typeof PROMPTS;
 export const PROMPT_KEYS = Object.keys(PROMPTS) as PromptKey[];
 export const isPromptKey = (v: unknown): v is PromptKey => typeof v === 'string' && Object.prototype.hasOwnProperty.call(PROMPTS, v);
 
-/** A prompt to start with, different from `not` when shuffling. */
-export function pickPrompt(not?: PromptKey): PromptKey {
-  const pool = PROMPT_KEYS.filter((k) => k !== not);
-  const i = crypto.getRandomValues(new Uint32Array(1))[0]! % pool.length;
-  return pool[i]!;
+/**
+ * A prompt to draw: one you haven't drawn yet if there is one (`used` is oldest first, kept on this phone only),
+ * else the one you drew longest ago. Never `not` (the one on screen, when shuffling).
+ */
+export function pickPrompt(not?: PromptKey, used: readonly string[] = []): PromptKey {
+  const fresh = PROMPT_KEYS.filter((k) => k !== not && !used.includes(k));
+  if (fresh.length) return fresh[crypto.getRandomValues(new Uint32Array(1))[0]! % fresh.length]!;
+  return used.find((k): k is PromptKey => isPromptKey(k) && k !== not) ?? PROMPT_KEYS.find((k) => k !== not)!;
+}
+
+/** Note that a prompt was drawn: moved to the end (newest), no repeats, only prompts that still exist. */
+export function rememberPrompt(used: readonly string[], key: string | undefined): string[] {
+  if (!isPromptKey(key)) return [...used];
+  return [...used.filter((k) => k !== key && isPromptKey(k)), key].slice(-PROMPT_KEYS.length);
 }
 
 /** "Mina's coffee order"-style names are hard to make read well for every prompt, so: "Mina's drawing". */

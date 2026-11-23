@@ -119,7 +119,11 @@ export function DoodlePad({ prompt, onChange }: { prompt: string; onChange: (enc
         class="doodle-pad"
         viewBox="-12 -12 280 280"
         role="img"
-        aria-label={empty ? 'Drawing space, empty' : `Your drawing, ${strokes.length} ${strokes.length === 1 ? 'line' : 'lines'}`}
+        aria-label={
+          empty
+            ? 'Drawing space, empty. Draw with a finger, pen or mouse, or use Make one for me, below.'
+            : `Your drawing, ${strokes.length} ${strokes.length === 1 ? 'line' : 'lines'}`
+        }
         aria-describedby="doodle-prompt"
         onPointerDown={down}
         onPointerMove={move}
@@ -308,9 +312,11 @@ export function MeetupDoodleView({ invite, people, context, onClose }: { invite:
         ? 'Hold this up. Each of them is looking for their own.'
         : 'Hold this up. They’re holding up yours.'
       : `Hold this up. ${invite.senderName} is holding up yours.`;
+  // Whoever can see does the finding: the person holding this up never has to look for anything.
+  const srHint = !invite.outgoing && !showMine ? `You don’t need to look: ${invite.senderName} will find you.` : 'You don’t need to look: they’ll find you.';
 
   return (
-    <HoldUpDialog bg={c.bg} fg={c.fg} lead={lead} context={context} onClose={onClose}>
+    <HoldUpDialog bg={c.bg} fg={c.fg} lead={lead} srHint={srHint} context={context} onClose={onClose}>
       <h2 id="findme-word" class="findme-word doodle-title">
         {title}
       </h2>

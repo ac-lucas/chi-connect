@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { toBase64Url } from '../model/ids';
 import { parseWireInvite } from '../relay/invites';
 import { randomId } from '../model/ids';
-import { decodeDoodle, doodleColor, doodlePath, DOODLE_LIMITS, encodeDoodle, generateDoodle, isPromptKey, pickPrompt, PROMPTS, RETIRED_PROMPT_KEYS, thin, type Doodle } from './doodle';
+import { countPoints, decodeDoodle, doodleColor, doodlePath, doodleRecipe, DOODLE_LIMITS, encodeDoodle, generateDoodle, isPromptKey, pickPrompt, PROMPTS, rememberPrompt, RETIRED_PROMPT_KEYS, SHAPE_NAMES, thin, type Doodle } from './doodle';
 
 const sample: Doodle = [
   [
@@ -20,7 +20,7 @@ describe('doodle encoding', () => {
     expect(decodeDoodle(e)).toEqual(sample);
     const g = generateDoodle('x');
     expect(decodeDoodle(encodeDoodle(g))).toEqual(g);
-    expect(encodeDoodle(g).length).toBeLessThan(400);
+    expect(encodeDoodle(g).length).toBeLessThan(DOODLE_LIMITS.encoded);
   });
 
   it('refuses anything malformed', () => {
@@ -51,12 +51,47 @@ describe('doodle encoding', () => {
     expect(doodleColor('same')).toEqual(doodleColor('same'));
   });
 
+  it('makes many different drawings, each within the limits a hand-drawn one must meet', () => {
+    const recipes = new Set<string>();
+    const n = 400;
+    for (let i = 0; i < n; i++) {
+      const seed = `seed-${i}`;
+      const { layout, shapes } = doodleRecipe(seed);
+      recipes.add(`${layout}:${shapes.join('+')}`);
+      expect(new Set(shapes).size).toBe(shapes.length); // no shape twice in one drawing
+      const d = generateDoodle(seed);
+      expect(d.length).toBeGreaterThan(1);
+      expect(d.length).toBeLessThanOrEqual(DOODLE_LIMITS.strokes);
+      expect(countPoints(d)).toBeLessThanOrEqual(DOODLE_LIMITS.points);
+      expect(decodeDoodle(encodeDoodle(d))).toEqual(d);
+    }
+    // Nearly every seed gets its own combination of shapes and layout.
+    expect(recipes.size).toBeGreaterThan(n * 0.95);
+    // And every shape turns up.
+    const used = new Set([...Array(n).keys()].flatMap((i) => doodleRecipe(`seed-${i}`).shapes));
+    expect(used.size).toBe(SHAPE_NAMES.length);
+  });
+
   it('thins slow strokes but keeps where they end', () => {
     const slow: [number, number][] = Array.from({ length: 50 }, (_, i) => [i, 0]);
     const t = thin(slow, 5);
     expect(t.length).toBeLessThan(15);
     expect(t[0]).toEqual([0, 0]);
     expect(t[t.length - 1]).toEqual([49, 0]);
+  });
+
+  it('prefers prompts you haven’t drawn, then the one drawn longest ago', () => {
+    const keys = Object.keys(PROMPTS);
+    expect(keys.length).toBeGreaterThan(5);
+    const allButTwo = keys.slice(0, -2);
+    for (let i = 0; i < 30; i++) expect(keys.slice(-2)).toContain(pickPrompt(undefined, allButTwo));
+    // Everything drawn: the oldest comes back, but never the one already on screen.
+    expect(pickPrompt(undefined, keys)).toBe(keys[0]);
+    expect(pickPrompt(keys[0] as never, keys)).toBe(keys[1]);
+    // Remembering moves a prompt to newest, drops repeats and retired keys.
+    expect(rememberPrompt(['coffee', 'bag', 'shoes'], 'bag')).toEqual(['shoes', 'bag']);
+    expect(rememberPrompt(['bag'], 'not-a-prompt')).toEqual(['bag']);
+    expect(rememberPrompt(keys, 'bag').length).toBe(keys.length);
   });
 
   it('picks known prompts, and a different one when shuffling', () => {

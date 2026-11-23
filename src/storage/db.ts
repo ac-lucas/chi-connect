@@ -36,6 +36,8 @@ export interface Settings {
   dismissed: string[];
   /** Nudges shown per day, for the daily cap: { day key: count }. */
   nudgeCounts: Record<string, number>;
+  /** Doodle prompts this person has drawn, oldest first, so new invites prefer ones they haven't. */
+  usedPrompts: string[];
 }
 
 interface PebbleSchema extends DBSchema {

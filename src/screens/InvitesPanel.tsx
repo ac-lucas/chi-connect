@@ -8,7 +8,8 @@ import type { PlannedBreak } from '../schedule/breaks';
 import { announce } from '../ui/announce';
 import { keepingFocus } from '../ui/focus';
 import { DoodleGraphic, DoodlePad, promptText } from './DoodleCard';
-import { decodeDoodle, doodleColor, generateDoodle } from '../schedule/doodle';
+import { decodeDoodle, doodleColor, generateDoodle, rememberPrompt } from '../schedule/doodle';
+import { getSetting, setSetting } from '../storage/db';
 
 interface Props {
   invites: Invite[];
@@ -50,6 +51,10 @@ export function InvitesPanel({ invites, connections, items, relay, heldUntil, on
     setProblem(null);
     try {
       await acceptInvite(relay, i, myDoodle ?? undefined);
+      // Remember the prompt they drew, so their own invites prefer others (this phone only; a failure here is harmless).
+      void getSetting('usedPrompts')
+        .then((u) => setSetting('usedPrompts', rememberPrompt(u ?? [], i.prompt)))
+        .catch(() => {});
       setDrawingFor(null);
       setMyDoodle(null);
       onAccepted?.(i.start);

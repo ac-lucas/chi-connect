@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { CloseButton } from '../ui/CloseButton';
 import { PLACES } from '../data/places';
 import { LIMITS_INVITE } from '../relay/invites';
@@ -7,13 +7,13 @@ import type { Connection, Invite, InviteKind, MeetingSpot } from '../model/types
 import { timeRange, timeRangeSpoken } from '../program/program';
 import { addPeopleToInvite, deliverInvite, KIND_INFO, sendInvite } from '../schedule/invites';
 import type { Transport } from '../relay/transport';
-import { listConnections } from '../storage/db';
+import { getSetting, listConnections, setSetting } from '../storage/db';
 import { announce } from '../ui/announce';
 import { useScreenHeading } from '../ui/useScreenHeading';
 import { useLive } from '../ui/useLive';
 import { SpotPicker } from './SpotPicker';
 import { DoodlePad, promptText } from './DoodleCard';
-import { encodeDoodle, pickPrompt, skipDoodle } from '../schedule/doodle';
+import { encodeDoodle, pickPrompt, rememberPrompt, skipDoodle } from '../schedule/doodle';
 
 export interface InviteDraft {
   /** Kinds offered: break kinds for a gap, side-by-side kinds for a session. */
@@ -60,6 +60,16 @@ export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
   const [spot, setSpot] = useState<MeetingSpot | undefined>(undefined);
   const [note, setNote] = useState('');
   const [prompt, setPrompt] = useState(() => pickPrompt());
+  /** Prompts drawn before (this phone only), so a new invite starts with one not drawn yet. */
+  const used = useRef<string[]>([]);
+  /** Once someone draws or shuffles, the prompt on screen is theirs: loading the history mustn't change it. */
+  const touched = useRef(false);
+  useEffect(() => {
+    void getSetting('usedPrompts').then((u) => {
+      used.current = u ?? [];
+      if (!touched.current) setPrompt(pickPrompt(undefined, used.current));
+    });
+  }, []);
   const [doodle, setDoodle] = useState<string | null>(null);
   /** Changing the prompt clears the pad, so it remounts. */
   const [padKey, setPadKey] = useState(0);
@@ -145,6 +155,7 @@ export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
         },
         (who) => announce(`${who.profile.displayName} said yes.`),
       );
+      void setSetting('usedPrompts', rememberPrompt(used.current, prompt)).catch(() => {});
       if (result.failed.length) return partly(result);
       announce(`Invite sent to ${recipients.length === 1 ? recipients[0]!.profile.displayName : `${recipients.length} people`}. It’s in your day.`);
       onSent(result.invite.id);
@@ -280,13 +291,21 @@ export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
           <fieldset class="stack">
             <legend>Your doodle</legend>
             <p class="hint">Everyone draws the same prompt. At the meetup they hold up yours and you hold up theirs: look for your own. Skip it and one is made for you.</p>
-            <DoodlePad key={padKey} prompt={promptText(prompt)} onChange={setDoodle} />
+            <DoodlePad
+              key={padKey}
+              prompt={promptText(prompt)}
+              onChange={(d) => {
+                touched.current = true;
+                setDoodle(d);
+              }}
+            />
             <div class="actions">
               <button
                 type="button"
                 class="button quiet"
                 onClick={() => {
-                  setPrompt((p) => pickPrompt(p));
+                  touched.current = true;
+                  setPrompt((p) => pickPrompt(p, used.current));
                   setDoodle(null);
                   setPadKey((k) => k + 1);
                 }}

@@ -49,7 +49,24 @@ export function ShapeCardView({ card, context, onClose }: { card: ShapeCard; con
  * The full-screen shell for anything you hold up to find someone (a shape, a doodle). Its children must include
  * an element with id "findme-word": the dialog's name.
  */
-export function HoldUpDialog({ bg, fg, lead, context, onClose, children }: { bg: string; fg: string; lead: string; context?: string; onClose: () => void; children: ComponentChildren }) {
+export function HoldUpDialog({
+  bg,
+  fg,
+  lead,
+  srHint,
+  context,
+  onClose,
+  children,
+}: {
+  bg: string;
+  fg: string;
+  lead: string;
+  /** Read out to screen reader users only, after the lead (for example "You don't need to look: Mina will find you."). */
+  srHint?: string;
+  context?: string;
+  onClose: () => void;
+  children: ComponentChildren;
+}) {
   const done = useRef<HTMLButtonElement>(null);
   const close = useRef<HTMLButtonElement>(null);
   const [opener] = useState(() => document.activeElement as HTMLElement | null);
@@ -122,6 +139,11 @@ export function HoldUpDialog({ bg, fg, lead, context, onClose, children }: { bg:
       </button>
       <p id="findme-lead" class="findme-lead">
         {lead}
+        {/* Screen reader users often keep the display off (VoiceOver calls it Screen Curtain; other readers: verify).
+            A card held up to be seen is no use then, so say so. */}
+        <span class="visually-hidden">
+          {srHint ? ` ${srHint}` : ''} If your screen is turned off, turn it on so others can see this.
+        </span>
       </p>
       {context && <p class="findme-context">{context}</p>}
       {children}
