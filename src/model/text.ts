@@ -29,7 +29,7 @@ export function graphemes(s: string): string[] {
   return Array.from(s);
 }
 
-/** Normalise, strip unsafe characters, collapse whitespace and cut to `max` visible characters. */
+/** Normalize, strip unsafe characters, collapse whitespace and cut to `max` visible characters. */
 export function cleanText(input: unknown, max: number): string {
   if (typeof input !== 'string') return '';
   const s = input.normalize('NFC').replace(CONTROL, ' ').replace(INVISIBLE, '').replace(/\s+/g, ' ').trim();

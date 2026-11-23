@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { CloseButton } from '../ui/CloseButton';
 import { knownTagById } from '../model/tags';
 import type { ScheduleItem } from '../model/types';
-import { dayLabel, MAX_RESULTS, overlaps, programmeDays, searchSessions, timeRange, timeRangeSpoken } from '../programme/programme';
-import { FORMAT_LABELS, type Programme, type ProgrammeSession } from '../programme/types';
+import { dayLabel, MAX_RESULTS, overlaps, programDays, searchSessions, timeRange, timeRangeSpoken } from '../program/program';
+import { FORMAT_LABELS, type Program, type ProgramSession } from '../program/types';
 import { deleteScheduleItem, listAllSchedule, listConnections, putScheduleItem } from '../storage/db';
 import { alsoGoing, namesList } from '../schedule/overlap';
 import type { Connection } from '../model/types';
@@ -11,24 +11,24 @@ import { announce } from '../ui/announce';
 import { useScreenHeading } from '../ui/useScreenHeading';
 import { savedId } from '../schedule/starter';
 import { useLive } from '../ui/useLive';
-import { ProgrammeNote } from './ProgrammeNote';
+import { ProgramNote } from './ProgramNote';
 
 interface Props {
-  programme: Programme;
+  program: Program;
   initialDay: number;
   onDone: () => void;
 }
 
 /** Quick-add (F10): search and tap. No browsing screens. */
-export function AddSessionsScreen({ programme, initialDay, onDone }: Props) {
+export function AddSessionsScreen({ program, initialDay, onDone }: Props) {
   const heading = useScreenHeading<HTMLHeadingElement>();
-  const days = programmeDays(programme);
+  const days = programDays(program);
   const [day, setDay] = useState(days.includes(initialDay) ? initialDay : days[0]!);
   const [query, setQuery] = useState('');
   const saved = useLive(async () => (await listAllSchedule()).filter((s) => s.type === 'session'), ['schedule']) ?? [];
   const people = useLive(listConnections, ['connections']) ?? [];
 
-  const results = useMemo(() => searchSessions(programme, query, day), [programme, query, day]);
+  const results = useMemo(() => searchSessions(program, query, day), [program, query, day]);
   // The spoken result count waits for a pause in typing, so it isn't read out on every keystroke.
   const countText =
     results.length === 0 ? 'No sessions match.' : results.length >= MAX_RESULTS ? `Showing the first ${MAX_RESULTS}. Search to narrow it down.` : `${results.length} sessions.`;
@@ -37,11 +37,11 @@ export function AddSessionsScreen({ programme, initialDay, onDone }: Props) {
     const t = setTimeout(() => setSpokenCount(countText), 600);
     return () => clearTimeout(t);
   }, [countText]);
-  const savedBySession = new Map(saved.map((s) => [s.programmeSessionId, s]));
+  const savedBySession = new Map(saved.map((s) => [s.programSessionId, s]));
 
   // Taps on a session whose save is still in flight are ignored, so a double tap can't save it twice.
   const inFlight = useRef(new Set<string>());
-  async function toggle(s: ProgrammeSession) {
+  async function toggle(s: ProgramSession) {
     if (inFlight.current.has(s.id)) return;
     inFlight.current.add(s.id);
     try {
@@ -50,18 +50,18 @@ export function AddSessionsScreen({ programme, initialDay, onDone }: Props) {
       inFlight.current.delete(s.id);
     }
   }
-  async function toggleNow(s: ProgrammeSession) {
+  async function toggleNow(s: ProgramSession) {
     // Decide from what's stored right now, not the screen's copy, which can lag a quick second tap.
-    const existing = (await listAllSchedule()).find((x) => x.type === 'session' && x.programmeSessionId === s.id);
+    const existing = (await listAllSchedule()).find((x) => x.type === 'session' && x.programSessionId === s.id);
     if (existing) {
       await deleteScheduleItem(existing.id);
       announce(`Removed ${s.title}.`);
     } else {
       await putScheduleItem({
-        id: savedId(s.id), // one per programme session: saving it again overwrites, never duplicates
+        id: savedId(s.id), // one per program session: saving it again overwrites, never duplicates
         type: 'session',
         source: 'user',
-        programmeSessionId: s.id,
+        programSessionId: s.id,
         title: s.title,
         place: s.room,
         start: s.start,
@@ -79,7 +79,7 @@ export function AddSessionsScreen({ programme, initialDay, onDone }: Props) {
         <h2 id="add-heading" ref={heading} tabIndex={-1}>
           Add sessions
         </h2>
-        <ProgrammeNote programme={programme} />
+        <ProgramNote program={program} />
       </div>
 
       <div class="segmented" role="group" aria-label="Day">

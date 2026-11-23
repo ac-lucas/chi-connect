@@ -33,7 +33,7 @@ describe('pairing', () => {
   });
 
   it('changes the match word if someone swaps in their own key', async () => {
-    // The word is 6 bits (8 colours x 8 shapes), so any single swap keeps it 1 time in 64 by chance.
+    // The word is 6 bits (8 colors x 8 shapes), so any single swap keeps it 1 time in 64 by chance.
     // Check that swapped keys spread across many words.
     const a = await side();
     const b = await side();
@@ -69,7 +69,7 @@ describe('pairing', () => {
 
   it('builds readable words', async () => {
     const w = await matchWord((await side()).pub, (await side()).pub);
-    expect(w.text).toBe(`${w.colour} ${w.shape}`);
+    expect(w.text).toBe(`${w.color} ${w.shape}`);
     expect(w.glyph.length).toBeGreaterThan(0);
   });
 });

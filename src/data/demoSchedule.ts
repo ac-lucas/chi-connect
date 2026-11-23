@@ -1,6 +1,6 @@
-// The ready-made schedule for trying the app: real sessions from last year's programme (the preview), the same
+// The ready-made schedule for trying the app: real sessions from last year's program (the preview), the same
 // for everyone, so a judge sees breaks, lunch, invites and nudges straight away without adding anything.
-// Labelled Sample in the day view and removable. Wednesday has two sessions at once, to show a clash.
+// Labeled Sample in the day view and removable. Wednesday has two sessions at once, to show a clash.
 // IDs are the feed's own session IDs (chi2026, revision 1).
 export const DEMO_SCHEDULE: readonly string[] = [
   's214933', // Mon 10:30 Opening Plenary & Keynote
@@ -12,7 +12,7 @@ export const DEMO_SCHEDULE: readonly string[] = [
   's224991', // Wed 11:00 AI for Task Augmentation (clash)
   's225718', // Wed 18:30 XR Embodied and Spatial Interaction
   's224926', // Thu 11:00 Captioning, Description, and Media Interaction
-  's223541', // Thu 18:30 Human-Centred AI or AI-Enabled HCI?
+  's223541', // Thu 18:30 Human-Centered AI or AI-Enabled HCI?
   's225154', // Fri 11:00 Embodied AR/XR
   's215056', // Fri 15:15 Keynote & Closing Plenary
 ];

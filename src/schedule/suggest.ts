@@ -3,7 +3,7 @@
 // one card of each kind and every card can be dismissed.
 import { KNOWN_TAGS } from '../data/tags';
 import type { ScheduleItem } from '../model/types';
-import type { Programme, ProgrammeSession } from '../programme/types';
+import type { Program, ProgramSession } from '../program/types';
 import type { Busy } from './breaks';
 
 const MIN = 60_000;
@@ -29,15 +29,15 @@ const labelOf = (id: string) => KNOWN_TAGS.find((t) => t.id === id)?.label ?? id
 
 /**
  * A wildcard (F15): a session that fits a free gap, near your interests but outside your usual topics.
- * "Near" = its topics often appear alongside yours in this programme. Sessions on your own topics, or ones
+ * "Near" = its topics often appear alongside yours in this program. Sessions on your own topics, or ones
  * you saved or skipped, are left out. Returns the best one, or null.
  */
 export function pickWildcard(
-  p: Programme,
+  p: Program,
   gaps: Gap[],
   myTopics: string[],
   exclude: ReadonlySet<string>,
-): { session: ProgrammeSession; gap: Gap; near: string | null } | null {
+): { session: ProgramSession; gap: Gap; near: string | null } | null {
   if (!gaps.length) return null;
   const mine = new Set(myTopics);
   // How often each topic shares a session with one of mine.
@@ -46,7 +46,7 @@ export function pickWildcard(
     if (!s.topics.some((t) => mine.has(t))) continue;
     for (const t of s.topics) if (!mine.has(t)) nearness.set(t, (nearness.get(t) ?? 0) + 1);
   }
-  let best: { session: ProgrammeSession; gap: Gap; near: string | null; score: number } | null = null;
+  let best: { session: ProgramSession; gap: Gap; near: string | null; score: number } | null = null;
   for (const s of p.sessions) {
     if (exclude.has(s.id) || s.topics.length === 0 || s.topics.some((t) => mine.has(t))) continue;
     const gap = gaps.find((g) => s.start >= g.start + 5 * MIN && s.end <= g.end - 5 * MIN);
@@ -82,8 +82,8 @@ export function inSomething(items: ScheduleItem[], now: number): boolean {
   return items.some((i) => i.start <= now && i.end > now && (i.type === 'session' || i.type === 'protected' || i.type === 'invite'));
 }
 
-/** A line about a session's topic that is true of the programme data: a real count, never a guess about people. */
-export function topicLine(p: Programme, session: Pick<ProgrammeSession, 'topics'>): string | null {
+/** A line about a session's topic that is true of the program data: a real count, never a guess about people. */
+export function topicLine(p: Program, session: Pick<ProgramSession, 'topics'>): string | null {
   const t = session.topics[0];
   if (!t) return null;
   const n = p.sessions.filter((s) => s.topics.includes(t)).length;

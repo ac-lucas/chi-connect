@@ -1,5 +1,5 @@
 // "Heads-up" cards from the day planner: no gap for lunch, or a long back-to-back stretch (with a recharge offer).
-import { clockTime as clock } from '../../programme/programme';
+import { clockTime as clock } from '../../program/program';
 import type { HeadsUp } from '../../schedule/breaks';
 
 export function HeadsUpCard({ h, onRecharge, onEdit }: { h: HeadsUp; onRecharge: (from: number, mins: number) => void; onEdit: () => void }) {

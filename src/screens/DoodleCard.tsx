@@ -4,7 +4,7 @@ import type { Connection, Invite } from '../model/types';
 import {
   countPoints,
   decodeDoodle,
-  doodleColour,
+  doodleColor,
   doodlePath,
   DOODLE_LIMITS,
   drawingOf,
@@ -41,9 +41,9 @@ export function DoodleGraphic({ doodle, size, label }: { doodle: Doodle; size?: 
   );
 }
 
-/** A small doodle on its meetup colour, with words beside it: "Look for yours" in the day, on invites, on Today. */
+/** A small doodle on its meetup color, with words beside it: "Look for yours" in the day, on invites, on Today. */
 export function DoodleBadge({ inviteId, doodle, text }: { inviteId: string; doodle: Doodle; text: string }) {
-  const c = doodleColour(inviteId);
+  const c = doodleColor(inviteId);
   return (
     <span class="shape-badge" style={{ background: c.bg, color: c.fg }}>
       <DoodleGraphic doodle={doodle} size="1.75em" />
@@ -281,53 +281,42 @@ export function DoodleReplay({ items, fg, bg }: { items: { doodle: Doodle; label
   );
 }
 
-/** "Nobody's said yes yet", written out by hand (a wipe from left to right, or just there with reduced motion). It's the card's title. */
-function Waiting() {
-  return (
-    <h2 id="findme-word" class="doodle-waiting handwritten">
-      <span>nobody’s said yes yet</span>
-    </h2>
-  );
-}
-
 /**
  * Full screen at a meetup. Guests hold up the sender's doodle; the sender holds up each guest's doodle in turn.
  * Everyone looks for their own. "Show mine instead" swaps to your own (the others saw it on the invite).
  */
 export function MeetupDoodleView({ invite, people, context, onClose }: { invite: Invite; people: Connection[]; context?: string; onClose: () => void }) {
   const [mine, setMine] = useState(false);
-  const c = doodleColour(invite.id);
+  const c = doodleColor(invite.id);
   const own = myDoodleOf(invite);
   const nameOf = (id: string) => people.find((p) => p.id === id)?.profile.displayName ?? 'Someone';
 
   const theirs: { doodle: Doodle; label: string }[] = invite.outgoing
     ? invite.acceptedIds.map((id) => ({ doodle: decode(invite.guestDoodles?.[id], `${invite.id}:${id}`), label: drawingOf(nameOf(id)) }))
     : [{ doodle: decode(invite.doodle, invite.id), label: drawingOf(invite.senderName) }];
+  // Sent, but nobody has said yes yet: show your own drawing (they saw it on the invite).
   const waiting = invite.outgoing && theirs.length === 0;
-  const items = mine ? [{ doodle: own, label: 'Your drawing' }] : theirs;
-  const title = mine ? 'Your drawing' : invite.outgoing ? (theirs.length === 1 ? theirs[0]!.label : 'Their drawings') : theirs[0]!.label;
-  const lead = mine
-    ? 'Hold this up. They saw it on the invite.'
-    : invite.outgoing
+  const showMine = mine || waiting;
+  const items = showMine ? [{ doodle: own, label: 'Your drawing' }] : theirs;
+  const title = showMine ? 'Your drawing' : invite.outgoing ? (theirs.length === 1 ? theirs[0]!.label : 'Their drawings') : theirs[0]!.label;
+  const lead = waiting
+    ? 'Nobody’s said yes yet. Hold this up: they saw it on the invite.'
+    : mine
+      ? 'Hold this up. They saw it on the invite.'
+      : invite.outgoing
       ? theirs.length > 1
         ? 'Hold this up. Each of them is looking for their own.'
         : 'Hold this up. They’re holding up yours.'
       : `Hold this up. ${invite.senderName} is holding up yours.`;
 
   return (
-    <HoldUpDialog bg={c.bg} fg={c.fg} lead={waiting ? 'Your doodle is ready for when they do.' : lead} context={context} onClose={onClose}>
-      {waiting ? (
-        <Waiting />
-      ) : (
-        <>
-          <h2 id="findme-word" class="findme-word doodle-title">
-            {title}
-          </h2>
-          <DoodleReplay key={mine ? 'mine' : 'theirs'} items={items} fg={c.fg} bg={c.bg} />
-        </>
-      )}
+    <HoldUpDialog bg={c.bg} fg={c.fg} lead={lead} context={context} onClose={onClose}>
+      <h2 id="findme-word" class="findme-word doodle-title">
+        {title}
+      </h2>
+      <DoodleReplay key={showMine ? 'mine' : 'theirs'} items={items} fg={c.fg} bg={c.bg} />
       <p class="findme-pattern doodle-prompt-line">Everyone draws: {promptText(invite.prompt)}</p>
-      {!mine && !waiting && (
+      {!showMine && (
         <p class="doodle-look">
           Look for yours
           <DoodleGraphic doodle={own} size="2.5rem" />

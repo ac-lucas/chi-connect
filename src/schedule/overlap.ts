@@ -1,7 +1,7 @@
 // Schedule overlap (F14): with someone's say-so, see which of your saved sessions they saved too.
 // Opt-in per person, session-level only, revocable (turning it off sends an empty list). Connected pairs only.
 import type { Connection } from '../model/types';
-import type { Programme, ProgrammeSession } from '../programme/types';
+import type { Program, ProgramSession } from '../program/types';
 import { MAX_SHARED_SESSIONS, sendPairMessage } from '../relay/protocol';
 import type { Transport } from '../relay/transport';
 import { listAllSchedule, listConnections, updateConnection } from '../storage/db';
@@ -11,8 +11,8 @@ const RESEND_MS = 12 * 60 * 60 * 1000;
 
 export async function mySavedSessionIds(): Promise<string[]> {
   const ids = (await listAllSchedule())
-    .filter((s) => s.type === 'session' && s.programmeSessionId)
-    .map((s) => s.programmeSessionId!);
+    .filter((s) => s.type === 'session' && s.programSessionId)
+    .map((s) => s.programSessionId!);
   return [...new Set(ids)].sort().slice(0, MAX_SHARED_SESSIONS);
 }
 

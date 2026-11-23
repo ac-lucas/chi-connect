@@ -126,12 +126,12 @@ describe('sending and answering', () => {
   it('a yes carries the guest’s doodle; saying yes keeps my own; both go when the meetup ends', async () => {
     const sam = conn('Sam');
     await putConnection(sam);
-    const { invite } = await sendInvite(null, 'Ana', [sam], { kind: 'meal', start: Date.now() + H, end: Date.now() + 2 * H, prompt: 'coffee', doodle: encodeDoodle(generateDoodle('ana')) }, () => {});
+    const { invite } = await sendInvite(null, 'Ana', [sam], { kind: 'meal', start: Date.now() + H, end: Date.now() + 2 * H, prompt: 'snack', doodle: encodeDoodle(generateDoodle('ana')) }, () => {});
     const theirs = encodeDoodle(generateDoodle('sam'));
     await handleInviteMessage(sam, { t: 'yes', v: 1, id: invite.id, doodle: theirs }, Date.now());
     const got = await getInvite(invite.id);
     expect(got?.guestDoodles?.[sam.id]).toBe(theirs);
-    expect(got?.prompt).toBe('coffee');
+    expect(got?.prompt).toBe('snack');
 
     // The other side: an incoming invite I say yes to (simulated, so no relay needed).
     const mina = conn('Mina', true);
@@ -215,7 +215,7 @@ describe('find-me card and spots', () => {
   });
   it('describes spots in plain words', () => {
     expect(describeSpot({ row: 'back', side: 'left', aisleSeat: true })).toBe('Back left, aisle seat');
-    expect(describeSpot({ row: 'middle', side: 'centre' })).toBe('Middle center');
+    expect(describeSpot({ row: 'middle', side: 'center' })).toBe('Middle center');
     expect(describeSpot({ byDoor: true })).toBe('By the door');
     expect(describeSpot(undefined)).toBe('');
   });

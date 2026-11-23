@@ -1,17 +1,17 @@
-// Programme feed client. Follows the feed's own rules:
+// Program feed client. Follows the feed's own rules:
 //  - poll the small version.json (with a unique ?t= so no cache answers), at most once a minute;
-//  - download a programme only when the revision changes, from its revision file (immutable once published);
-//  - keep the last programme on the device so the app works offline.
-// Only the newest edition is ever polled. Until it's published (April 2027), last year's programme is shown as a
+//  - download a program only when the revision changes, from its revision file (immutable once published);
+//  - keep the last program on the device so the app works offline.
+// Only the newest edition is ever polled. Until it's published (April 2027), last year's program is shown as a
 // preview; that edition is frozen, so it's fetched once and never asked about again.
 import { readCapped, readTextCapped, timeoutSignal } from '../util/stream';
-import { transformFeed, type FeedProgramme } from './transform';
+import { transformFeed, type FeedProgram } from './transform';
 
 export const FEED_BASE = 'https://chidigitalexperience.org/data';
 /** The edition the app is for: polled for changes once POLL_NEWEST is switched on. */
 export const NEWEST = 'chi2027';
 /**
- * Off until the owner says to start (the 2027 programme arrives in April 2027). While off, the feed is never
+ * Off until the owner says to start (the 2027 program arrives in April 2027). While off, the feed is never
  * polled: the frozen preview is downloaded once and that's all.
  */
 export const POLL_NEWEST = false;
@@ -19,7 +19,7 @@ export const POLL_NEWEST = false;
 export const PREVIEW = 'chi2026';
 /** Never poll faster than this. The feed asks for no more than every 30 s; once a minute is plenty. */
 export const POLL_MS = 60_000;
-/** Refuse a programme download bigger than this (the full programme is about 12 MB). */
+/** Refuse a program download bigger than this (the full program is about 12 MB). */
 export const MAX_FEED_BYTES = 40 * 1024 * 1024;
 const MAX_VERSION_BYTES = 16 * 1024;
 const TIMEOUT_MS = 60_000;
@@ -40,10 +40,10 @@ const parseHere = (bytes: Uint8Array, edition: string, revision: number) =>
   transformFeed(JSON.parse(new TextDecoder().decode(bytes)), edition, revision);
 
 /**
- * Parse and transform the downloaded programme in a worker, so the 12 MB JSON doesn't freeze the screen. Where
+ * Parse and transform the downloaded program in a worker, so the 12 MB JSON doesn't freeze the screen. Where
  * module workers aren't available or the worker fails to start (verify per browser), it runs here instead.
  */
-async function parseProgramme(bytes: Uint8Array, edition: string, revision: number): Promise<FeedProgramme> {
+async function parseProgram(bytes: Uint8Array, edition: string, revision: number): Promise<FeedProgram> {
   if (typeof Worker === 'undefined') return parseHere(bytes, edition, revision);
   let worker: Worker;
   try {
@@ -52,10 +52,10 @@ async function parseProgramme(bytes: Uint8Array, edition: string, revision: numb
     return parseHere(bytes, edition, revision);
   }
   return new Promise((resolve, reject) => {
-    worker.onmessage = (e: MessageEvent<{ ok: boolean; programme?: FeedProgramme }>) => {
+    worker.onmessage = (e: MessageEvent<{ ok: boolean; program?: FeedProgram }>) => {
       worker.terminate();
-      if (e.data.ok && e.data.programme) resolve(e.data.programme);
-      else reject(new Error('not-a-programme'));
+      if (e.data.ok && e.data.program) resolve(e.data.program);
+      else reject(new Error('not-a-program'));
     };
     worker.onerror = () => {
       worker.terminate();
@@ -82,8 +82,8 @@ export function isRevisionUrl(url: unknown, edition: string, base = FEED_BASE): 
 }
 
 export interface CheckResult {
-  /** A new programme, if the revision moved (or none was held). */
-  programme: FeedProgramme | null;
+  /** A new program, if the revision moved (or none was held). */
+  program: FeedProgram | null;
   /** Whether a check was actually made (false when it was too soon). */
   checked: boolean;
   /** A revision that was downloaded but can't be used: remember it and don't download it again. */
@@ -106,26 +106,26 @@ async function versionOf(edition: string, now: number, fetchImpl: Fetch, base: s
 
 /** Download and transform one revision file. */
 async function download(edition: string, revision: number, url: unknown, fetchImpl: Fetch, base: string): Promise<CheckResult> {
-  if (!isRevisionUrl(url, edition, base)) return { programme: null, checked: true };
+  if (!isRevisionUrl(url, edition, base)) return { program: null, checked: true };
   let res: Response;
   try {
     // no-store: the app keeps its own (much smaller) copy, so the browser needn't keep another 12 MB in its cache.
     res = await fetchImpl(url, { cache: 'no-store', credentials: 'omit', signal: timeoutSignal(TIMEOUT_MS) });
   } catch {
-    return { programme: null, checked: true }; // network trouble: try again later
+    return { program: null, checked: true }; // network trouble: try again later
   }
-  if (!res.ok) return { programme: null, checked: true };
+  if (!res.ok) return { program: null, checked: true };
   try {
-    const programme = await parseProgramme(await readBytes(res, MAX_FEED_BYTES), edition, revision);
-    return programme.sessions.length ? { programme, checked: true } : { programme: null, checked: true, unusable: { edition, revision } };
+    const program = await parseProgram(await readBytes(res, MAX_FEED_BYTES), edition, revision);
+    return program.sessions.length ? { program, checked: true } : { program: null, checked: true, unusable: { edition, revision } };
   } catch {
-    return { programme: null, checked: true, unusable: { edition, revision } }; // too big or not a programme
+    return { program: null, checked: true, unusable: { edition, revision } }; // too big or not a program
   }
 }
 
 /**
- * Check for a newer programme: ask the newest edition for its revision and download it if it moved. If nothing is
- * held yet and the newest edition isn't out, fetch the frozen preview edition once. Returns { programme: null }
+ * Check for a newer program: ask the newest edition for its revision and download it if it moved. If nothing is
+ * held yet and the newest edition isn't out, fetch the frozen preview edition once. Returns { program: null }
  * when nothing changed, when it's too soon to ask again, or when the feed can't be reached.
  */
 export async function checkFeed(
@@ -133,17 +133,17 @@ export async function checkFeed(
   lastCheckedAt: number,
   { now = Date.now(), fetchImpl = fetch as Fetch, base = FEED_BASE, skip = undefined as Edition | undefined, pollNewest = POLL_NEWEST } = {},
 ): Promise<CheckResult> {
-  if (now - lastCheckedAt < POLL_MS) return { programme: null, checked: false };
-  if (!pollNewest && held) return { programme: null, checked: false }; // preview held and frozen: nothing to ask
+  if (now - lastCheckedAt < POLL_MS) return { program: null, checked: false };
+  if (!pollNewest && held) return { program: null, checked: false }; // preview held and frozen: nothing to ask
   const isNew = (e: string, r: number) => !(held?.edition === e && held.revision === r) && !(skip?.edition === e && skip.revision === r);
 
   const newest = pollNewest ? await versionOf(NEWEST, now, fetchImpl, base) : 'missing';
   if (newest && newest !== 'missing') {
-    return isNew(NEWEST, newest.revision) ? download(NEWEST, newest.revision, newest.url, fetchImpl, base) : { programme: null, checked: true };
+    return isNew(NEWEST, newest.revision) ? download(NEWEST, newest.revision, newest.url, fetchImpl, base) : { program: null, checked: true };
   }
   // The newest edition isn't out (or didn't answer). Anything already held stays: the preview never changes.
-  if (held) return { programme: null, checked: true };
+  if (held) return { program: null, checked: true };
   const preview = await versionOf(PREVIEW, now, fetchImpl, base);
-  if (!preview || preview === 'missing' || !isNew(PREVIEW, preview.revision)) return { programme: null, checked: true };
+  if (!preview || preview === 'missing' || !isNew(PREVIEW, preview.revision)) return { program: null, checked: true };
   return download(PREVIEW, preview.revision, preview.url, fetchImpl, base);
 }

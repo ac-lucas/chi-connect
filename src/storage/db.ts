@@ -1,5 +1,5 @@
 // On-device storage (IndexedDB via idb). Nothing in here is sent anywhere.
-import { deleteDB, openDB, type DBSchema, type IDBPDatabase } from 'idb';
+import { deleteDB, openDB, type DBSchema, type IDBPDatabase, type IDBPTransaction, type StoreNames } from 'idb';
 import { importPrivateJwk } from '../connect/pairing';
 import { ALL_STORES, changed } from './changes';
 // Bundled, not loaded on demand: a separately loaded file can go missing right after an update.
@@ -18,12 +18,12 @@ export interface Settings {
   relayAcks: string[];
   /** One-way connect codes we've shown recently. */
   intros: Intro[];
-  /** Day 1 of the sample programme (local midnight), fixed the first time the app is opened. */
+  /** Day 1 of the sample program (local midnight), fixed the first time the app is opened. */
   sampleAnchor: number;
   /** Auto-break suggestions the person skipped (keys from planDay). */
   skippedBreaks: string[];
-  /** The last programme downloaded from the feed, in the app's small shape. */
-  programmeFeed: import('../programme/transform').FeedProgramme;
+  /** The last program downloaded from the feed, in the app's small shape. */
+  programFeed: import('../program/transform').FeedProgram;
   /** When the feed was last asked about (so reloads don't poll faster than once a minute). */
   feedCheckedAt: number;
   /** A revision that was downloaded but couldn't be used (not downloaded again). */
@@ -49,7 +49,8 @@ interface PebbleSchema extends DBSchema {
   catchUp: { key: string; value: CatchUpItem };
 }
 
-const VERSION = 1;
+/** 1: first release. 2: US spellings in stored data (see upgradeToUsSpelling). */
+const VERSION = 2;
 let dbName = 'pebble';
 let dbPromise: Promise<IDBPDatabase<PebbleSchema>> | null = null;
 
@@ -61,7 +62,9 @@ function db(): Promise<IDBPDatabase<PebbleSchema>> {
   if (dbPromise) return dbPromise;
   const opening: Promise<IDBPDatabase<PebbleSchema>> = openDB<PebbleSchema>(dbName, VERSION, {
     // Step through versions, so a later VERSION bump adds to an existing database instead of failing.
-    upgrade(d, oldVersion) {
+    upgrade(d, oldVersion, _newVersion, tx) {
+      // A failure here mustn't leave the app unable to open its storage: log it and carry on with what moved.
+      if (oldVersion === 1) return void upgradeToUsSpelling(d, tx).catch((e) => console.warn('Storage upgrade incomplete', e));
       if (oldVersion >= 1) return;
       d.createObjectStore('profile');
       d.createObjectStore('settings');
@@ -70,7 +73,7 @@ function db(): Promise<IDBPDatabase<PebbleSchema>> {
       d.createObjectStore('followUps', { keyPath: 'id' }).createIndex('byConnection', 'connectionId');
       d.createObjectStore('schedule', { keyPath: 'id' }).createIndex('byStart', 'start');
       d.createObjectStore('invites', { keyPath: 'id' });
-      d.createObjectStore('catchUp', { keyPath: 'programmeSessionId' });
+      d.createObjectStore('catchUp', { keyPath: 'programSessionId' });
     },
     // Another tab (or a wipe) needs the database: close THIS connection, and open afresh on next use.
     blocking() {
@@ -88,6 +91,63 @@ function db(): Promise<IDBPDatabase<PebbleSchema>> {
     if (dbPromise === opening) dbPromise = null;
   });
   return opening;
+}
+
+type AnyRecord = Record<string, unknown>;
+
+/** Version 1 stored a few British spellings; move them to the US ones in place. */
+function usRecord<T>(value: T): T {
+  const o = value as AnyRecord | null;
+  if (!o || typeof o !== 'object') return value;
+  if ('programmeSessionId' in o) {
+    o.programSessionId = o.programmeSessionId;
+    delete o.programmeSessionId;
+  }
+  if (o.status === 'cancelled') o.status = 'canceled';
+  const spot = o.meetingSpot as AnyRecord | undefined;
+  if (spot?.side === 'centre') spot.side = 'center';
+  return value;
+}
+const usTags = (tags: unknown) =>
+  Array.isArray(tags) ? tags.map((t: AnyRecord) => (t && t.key === 'ageing' ? { ...t, key: 'aging', label: 'Aging' } : t)) : tags;
+
+/**
+ * Version 1 to 2, run once inside the upgrade transaction: rename stored fields and values to US spelling, move
+ * the Catch up later list to its new key, and move the cached program to its new settings key. Nothing is lost.
+ */
+async function upgradeToUsSpelling(
+  d: IDBPDatabase<PebbleSchema>,
+  tx: IDBPTransaction<PebbleSchema, StoreNames<PebbleSchema>[], 'versionchange'>,
+): Promise<void> {
+  // Catch up later is keyed by the renamed field: read it, make the store again with the new key, put it back.
+  const catchUp = (await tx.objectStore('catchUp').getAll()).map(usRecord);
+  d.deleteObjectStore('catchUp');
+  const fresh = d.createObjectStore('catchUp', { keyPath: 'programSessionId' });
+  for (const item of catchUp) await fresh.put(item);
+
+  for (const name of ['schedule', 'invites'] as const) {
+    let cursor = await tx.objectStore(name).openCursor();
+    while (cursor) {
+      await cursor.update(usRecord(cursor.value));
+      cursor = await cursor.continue();
+    }
+  }
+  let conn = await tx.objectStore('connections').openCursor();
+  while (conn) {
+    const c = conn.value;
+    await conn.update({ ...c, profile: { ...c.profile, tags: usTags(c.profile.tags) as typeof c.profile.tags } });
+    conn = await conn.continue();
+  }
+  const profile = tx.objectStore('profile');
+  const me = await profile.get('me');
+  if (me) await profile.put({ ...me, tags: usTags(me.tags) as typeof me.tags }, 'me');
+
+  const settings = tx.objectStore('settings');
+  const feed = await settings.get('programmeFeed');
+  if (feed !== undefined) {
+    await settings.put(feed, 'programFeed');
+    await settings.delete('programmeFeed');
+  }
 }
 
 /** Tests only: switch to a fresh database name. */
@@ -327,8 +387,8 @@ export async function putCatchUp(c: CatchUpItem): Promise<void> {
   await (await db()).put('catchUp', c);
   changed('catchUp');
 }
-export async function deleteCatchUp(programmeSessionId: string): Promise<void> {
-  await (await db()).delete('catchUp', programmeSessionId);
+export async function deleteCatchUp(programSessionId: string): Promise<void> {
+  await (await db()).delete('catchUp', programSessionId);
   changed('catchUp');
 }
 
@@ -363,7 +423,7 @@ export async function deleteInvite(id: string): Promise<void> {
   changed('invites');
 }
 /** The schedule entry for an invite we sent or accepted, if any. */
-/** The day a preview programme starts on (its first day is moved here). */
+/** The day a preview program starts on (its first day is moved here). */
 export async function getPreviewAnchor(now = Date.now()): Promise<number> {
   const saved = await getSetting('sampleAnchor');
   if (saved) return saved;
@@ -377,9 +437,9 @@ export async function listAllSchedule(): Promise<ScheduleItem[]> {
   return (await db()).getAllFromIndex('schedule', 'byStart');
 }
 
-/** Drop saved sessions from the sample programme once a real programme is in use. */
+/** Drop saved sessions from the sample program once a real program is in use. */
 /**
- * Keep saved sessions in step with the programme: a session that moved, changed room or was renamed is updated
+ * Keep saved sessions in step with the program: a session that moved, changed room or was renamed is updated
  * in your day. Returns how many changed.
  */
 export async function syncSavedSessions(sessions: { id: string; start: number; end: number; title: string; room?: string }[]): Promise<number> {
@@ -387,8 +447,8 @@ export async function syncSavedSessions(sessions: { id: string; start: number; e
   const tx = (await db()).transaction('schedule', 'readwrite');
   let n = 0;
   for (const item of await tx.store.getAll()) {
-    if (item.type !== 'session' || !item.programmeSessionId) continue;
-    const s = byId.get(item.programmeSessionId);
+    if (item.type !== 'session' || !item.programSessionId) continue;
+    const s = byId.get(item.programSessionId);
     if (!s) continue;
     if (s.start !== item.start || s.end !== item.end || s.title !== item.title || s.room !== item.place) {
       await tx.store.put({ ...item, start: s.start, end: s.end, title: s.title, place: s.room });
@@ -400,12 +460,12 @@ export async function syncSavedSessions(sessions: { id: string; start: number; e
   return n;
 }
 
-/** Remove sessions saved from a programme that has been replaced by another edition (their IDs mean nothing now). */
-export async function removeProgrammeSessions(): Promise<number> {
+/** Remove sessions saved from a program that has been replaced by another edition (their IDs mean nothing now). */
+export async function removeProgramSessions(): Promise<number> {
   const tx = (await db()).transaction('schedule', 'readwrite');
   let n = 0;
   for (const item of await tx.store.getAll()) {
-    if (item.type === 'session' && item.programmeSessionId) {
+    if (item.type === 'session' && item.programSessionId) {
       await tx.store.delete(item.id);
       n++;
     }
@@ -459,7 +519,7 @@ export async function wipeEverything(): Promise<void> {
 }
 
 /**
- * Ask the browser to keep our data when storage runs low. Support and behaviour differ by browser (verify);
+ * Ask the browser to keep our data when storage runs low. Support and behavior differ by browser (verify);
  * the answer is not shown to anyone, and refusal is fine.
  */
 export async function requestPersistentStorage(): Promise<void> {

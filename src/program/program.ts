@@ -1,7 +1,7 @@
-import { knownTagById, normaliseTagText } from '../model/tags';
+import { knownTagById, normalizeTagText } from '../model/tags';
 import { isOver, shiftToAnchor } from './preview';
-import type { FeedProgramme } from './transform';
-import type { Programme, ProgrammeSession } from './types';
+import type { FeedProgram } from './transform';
+import type { Program, ProgramSession } from './types';
 
 /** Local calendar day key, YYYY-MM-DD. */
 export function dayKey(ts: number): string {
@@ -30,29 +30,29 @@ export function atMinutes(ts: number, minutes: number): number {
   return d.getTime();
 }
 
-export function programmeDays(p: Programme): number[] {
+export function programDays(p: Program): number[] {
   return [...new Set(p.sessions.map((s) => startOfDay(s.start)))].sort((a, b) => a - b);
 }
 
 /**
- * The programme to show: the feed's, if one has been downloaded, else the sample. A feed programme that is
+ * The program to show: the feed's, if one has been downloaded, else the sample. A feed program that is
  * already over (last year's) is shown as a preview, its days moved to start on the anchor day.
  */
-export function resolveProgramme(anchor: number, feed: FeedProgramme, now = Date.now()): Programme {
+export function resolveProgram(anchor: number, feed: FeedProgram, now = Date.now()): Program {
   return isOver(feed, now) ? shiftToAnchor(feed, anchor, feed.timeZone) : feed;
 }
 
 export const MAX_RESULTS = 40;
 
 /** Search titles, rooms, formats and topics. Empty query lists the day's sessions. */
-export function searchSessions(p: Programme, query: string, day?: number): ProgrammeSession[] {
-  const q = normaliseTagText(query);
+export function searchSessions(p: Program, query: string, day?: number): ProgramSession[] {
+  const q = normalizeTagText(query);
   const words = q.split(' ').filter(Boolean);
   return p.sessions
     .filter((s) => day === undefined || startOfDay(s.start) === day)
     .filter((s) => {
       if (!words.length) return true;
-      const hay = normaliseTagText(
+      const hay = normalizeTagText(
         [s.title, s.room ?? '', s.format, ...s.topics.map((t) => knownTagById(t)?.label ?? t)].join(' '),
       );
       return words.every((w) => hay.includes(w));

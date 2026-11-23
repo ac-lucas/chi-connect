@@ -3,10 +3,10 @@ import type { Invite, ScheduleItem } from '../../model/types';
 import { buildRows, meetupOf } from './rows';
 
 const T = (h: number) => new Date(2027, 3, 12, h).getTime();
-const session = (id: string, psid: string): ScheduleItem => ({ id, type: 'session', source: 'user', title: id, start: T(11), end: T(12), programmeSessionId: psid });
+const session = (id: string, psid: string): ScheduleItem => ({ id, type: 'session', source: 'user', title: id, start: T(11), end: T(12), programSessionId: psid });
 const invite = (id: string, kind: Invite['kind'], psid?: string): Invite =>
-  ({ id, kind, start: T(11), end: T(12), outgoing: true, senderName: 'Me', recipientIds: ['a'], acceptedIds: ['a'], status: 'sent', programmeSessionId: psid }) as unknown as Invite;
-const meetupItem = (inv: Invite): ScheduleItem => ({ id: `inv-${inv.id}`, type: 'invite', source: 'invite', inviteId: inv.id, title: 'Meetup', start: inv.start, end: inv.end, programmeSessionId: inv.programmeSessionId });
+  ({ id, kind, start: T(11), end: T(12), outgoing: true, senderName: 'Me', recipientIds: ['a'], acceptedIds: ['a'], status: 'sent', programSessionId: psid }) as unknown as Invite;
+const meetupItem = (inv: Invite): ScheduleItem => ({ id: `inv-${inv.id}`, type: 'invite', source: 'invite', inviteId: inv.id, title: 'Meetup', start: inv.start, end: inv.end, programSessionId: inv.programSessionId });
 
 describe('buildRows', () => {
   it('puts sitting together at a saved session into that session’s block', () => {

@@ -3,8 +3,8 @@
 // without anyone calling refresh. The day's rows, actions and forms live in ./today/.
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Invite, ScheduleItem } from '../model/types';
-import { clockTime as clock, dayLabel, nextDay, programmeDays, startOfDay, timeRangeSpoken } from '../programme/programme';
-import type { Programme } from '../programme/types';
+import { clockTime as clock, dayLabel, nextDay, programDays, startOfDay, timeRangeSpoken } from '../program/program';
+import type { Program } from '../program/types';
 import { planDay, type Busy, type PlannedBreak } from '../schedule/breaks';
 import { energyToday } from '../schedule/energy';
 import { holdsInvites, inviteTitle } from '../schedule/invites';
@@ -15,7 +15,7 @@ import { useClock } from '../ui/useClock';
 import { useScreenHeading } from '../ui/useScreenHeading';
 import type { InviteDraft } from './InviteScreen';
 import { InvitesPanel, SimulateInvite } from './InvitesPanel';
-import { ProgrammeNote } from './ProgrammeNote';
+import { ProgramNote } from './ProgramNote';
 import { DoodleBadge, MeetupDoodleView, myDoodleOf } from './DoodleCard';
 import { SuggestionsPanel } from './SuggestionsPanel';
 import { DayRow } from './today/DayRow';
@@ -27,7 +27,7 @@ import { useTodayData } from './today/useTodayData';
 
 interface Props {
   name: string;
-  programme: Programme;
+  program: Program;
   relay: Transport | null;
   /** My interest topics (keys), for wildcard suggestions. */
   myTopics: string[];
@@ -45,12 +45,12 @@ interface Props {
 /** Re-read storage this often even when nothing is written, so expired invites tidy away. */
 const TIDY_EVERY_MS = 3 * 60_000;
 
-export function TodayScreen({ name, programme, relay, myTopics, onAddSessions, onInvite, day: shownDay, onDayChange, highlight, onHighlightShown, onRecap }: Props) {
+export function TodayScreen({ name, program, relay, myTopics, onAddSessions, onInvite, day: shownDay, onDayChange, highlight, onHighlightShown, onRecap }: Props) {
   const heading = useScreenHeading<HTMLHeadingElement>();
   const now = useClock(30_000);
   const { items, energy, skipped, invites, incoming, connections, hiddenPrompts, quiet } = useTodayData(Math.floor(now / TIDY_EVERY_MS));
 
-  const days = useMemo(() => programmeDays(programme), [programme]);
+  const days = useMemo(() => programDays(program), [program]);
   const today = startOfDay(now);
   const fallbackDay = days.includes(today) ? today : (days[0] ?? today);
   const day = shownDay !== null && days.includes(shownDay) ? shownDay : fallbackDay;
@@ -85,7 +85,7 @@ export function TodayScreen({ name, programme, relay, myTopics, onAddSessions, o
   const holding = items.find((i) => holdsInvites(i, now));
   const nextBreak = day === today ? (plan.breaks.find((b) => b.start > now) ?? null) : null;
 
-  // From 10 minutes before a confirmed meetup until it ends: put "Hold up their drawing" front and centre.
+  // From 10 minutes before a confirmed meetup until it ends: put "Hold up their drawing" front and center.
   const meetupNow =
     day === today
       ? rows
@@ -100,13 +100,13 @@ export function TodayScreen({ name, programme, relay, myTopics, onAddSessions, o
     onInvite({ kinds: b.kind === 'meal' ? ['meal', 'break-together'] : ['break-together', 'meal'], start: b.start, end: b.end });
   }
   function inviteFromSession(s: ScheduleItem, preselect?: string[]) {
-    onInvite({ kinds: ['sit-together', 'arrive-together', 'walk-over'], start: s.start, end: s.end, sessionId: s.programmeSessionId, sessionTitle: s.title, room: s.place, preselect });
+    onInvite({ kinds: ['sit-together', 'arrive-together', 'walk-over'], start: s.start, end: s.end, sessionId: s.programSessionId, sessionTitle: s.title, room: s.place, preselect });
   }
   // On a session with sitting together merged in: your own meetup gets more people (same invite, same doodles);
   // one you were invited to can't be changed by you, so that starts a new invite as usual.
   function inviteMore(s: ScheduleItem, inv: Invite) {
     if (!inv.outgoing) return inviteFromSession(s);
-    onInvite({ kinds: ['sit-together'], start: inv.start, end: inv.end, sessionId: s.programmeSessionId, sessionTitle: s.title, room: s.place, addTo: inv.id, already: inv.recipientIds });
+    onInvite({ kinds: ['sit-together'], start: inv.start, end: inv.end, sessionId: s.programSessionId, sessionTitle: s.title, room: s.place, addTo: inv.id, already: inv.recipientIds });
   }
 
   async function addProtected(kind: 'recharge' | 'off', from: number, minutes: number) {
@@ -222,7 +222,7 @@ export function TodayScreen({ name, programme, relay, myTopics, onAddSessions, o
       />
 
       <SuggestionsPanel
-        programme={programme}
+        program={program}
         items={items}
         connections={connections}
         level={dayLevel}
@@ -286,7 +286,7 @@ export function TodayScreen({ name, programme, relay, myTopics, onAddSessions, o
 
       {day === today && <SimulateInvite connections={connections} nextBreak={nextBreak} />}
 
-      <ProgrammeNote programme={programme} credit={false} />
+      <ProgramNote program={program} credit={false} />
 
       {shapeFor && shapeInvite && <MeetupDoodleView invite={shapeInvite} people={connections} context={shapeFor.context} onClose={() => setShapeFor(null)} />}
     </section>

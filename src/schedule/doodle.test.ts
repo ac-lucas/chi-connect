@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { toBase64Url } from '../model/ids';
 import { parseWireInvite } from '../relay/invites';
 import { randomId } from '../model/ids';
-import { decodeDoodle, doodleColour, doodlePath, DOODLE_LIMITS, encodeDoodle, generateDoodle, isPromptKey, pickPrompt, PROMPTS, thin, type Doodle } from './doodle';
+import { decodeDoodle, doodleColor, doodlePath, DOODLE_LIMITS, encodeDoodle, generateDoodle, isPromptKey, pickPrompt, PROMPTS, RETIRED_PROMPT_KEYS, thin, type Doodle } from './doodle';
 
 const sample: Doodle = [
   [
@@ -48,7 +48,7 @@ describe('doodle encoding', () => {
       expect(x).toBeGreaterThanOrEqual(0);
       expect(y).toBeLessThanOrEqual(255);
     }
-    expect(doodleColour('same')).toEqual(doodleColour('same'));
+    expect(doodleColor('same')).toEqual(doodleColor('same'));
   });
 
   it('thins slow strokes but keeps where they end', () => {
@@ -65,19 +65,24 @@ describe('doodle encoding', () => {
     for (let i = 0; i < 20; i++) expect(pickPrompt(k)).not.toBe(k);
     expect(isPromptKey('toString')).toBe(false);
     expect(isPromptKey('__proto__')).toBe(false);
-    expect(Object.keys(PROMPTS).length).toBeGreaterThan(10);
+    expect(Object.keys(PROMPTS).length).toBeGreaterThanOrEqual(5);
+    // Retired keys are never reused, and an invite carrying one is treated as having no prompt.
+    for (const k of RETIRED_PROMPT_KEYS) {
+      expect(isPromptKey(k)).toBe(false);
+      expect(Object.keys(PROMPTS)).not.toContain(k);
+    }
   });
 });
 
 describe('doodles in invites from another phone', () => {
   const base = () => ({ id: randomId(), kind: 'meal', start: Date.now() + 3_600_000, end: Date.now() + 7_200_000 });
   it('keeps a valid doodle and prompt', () => {
-    const w = parseWireInvite({ ...base(), doodle: encodeDoodle(sample), prompt: 'coffee' });
+    const w = parseWireInvite({ ...base(), doodle: encodeDoodle(sample), prompt: 'shoes' });
     expect(w?.doodle && decodeDoodle(w.doodle)).toEqual(sample);
-    expect(w?.prompt).toBe('coffee');
+    expect(w?.prompt).toBe('shoes');
   });
   it('drops a bad doodle or unknown prompt but keeps the invite', () => {
-    const w = parseWireInvite({ ...base(), doodle: raw([1, 3, 1]), prompt: '<b>hi</b>' });
+    const w = parseWireInvite({ ...base(), doodle: raw([1, 3, 1]), prompt: 'coffee' }); // a retired prompt
     expect(w).not.toBeNull();
     expect(w?.doodle).toBeUndefined();
     expect(w?.prompt).toBeUndefined();

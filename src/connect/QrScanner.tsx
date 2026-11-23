@@ -13,7 +13,7 @@ const MAX_FRAME_WIDTH = 720;
 
 /**
  * Reads QR codes from the camera with jsQR. Camera access needs a secure context (HTTPS or localhost);
- * behaviour across iOS Safari and Android Chrome is "verify" until tested on devices.
+ * behavior across iOS Safari and Android Chrome is "verify" until tested on devices.
  */
 export function QrScanner({ onResult }: Props) {
   const video = useRef<HTMLVideoElement>(null);

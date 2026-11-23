@@ -15,7 +15,7 @@ import { InviteScreen, type InviteDraft } from './screens/InviteScreen';
 import { CatchUpScreen } from './screens/CatchUpScreen';
 import { RecapScreen } from './screens/RecapScreen';
 import { getProfile, listConnections, requestPersistentStorage, saveProfile, seedDemoOnce, seedDemoScheduleOnce } from './storage/db';
-import { useProgramme } from './app/useProgramme';
+import { useProgram } from './app/useProgram';
 import { useRelaySync } from './app/useRelaySync';
 import { PersonById } from './screens/PersonById';
 import { useLive } from './ui/useLive';
@@ -85,17 +85,17 @@ export function App() {
   const [highlight, setHighlight] = useState<string | null>(null);
   const [pendingCode, setPendingCode] = useState<string | undefined>(takeCodeFromLink);
   const [loadError, setLoadError] = useState(false);
-  const { programme, failed: programmeFailed } = useProgramme();
+  const { program, failed: programFailed } = useProgram();
   // Kept current by storage change notices: new connections, accepts and removals show up by themselves.
   const connections = useLive(listConnections, ['connections']) ?? [];
   useRelaySync(relay, !!profile);
 
 
-  // Trying the app on the preview programme: start with the ready-made demo schedule (labelled Sample), once.
+  // Trying the app on the preview program: start with the ready-made demo schedule (labeled Sample), once.
   useEffect(() => {
-    if (!profile || programme?.shiftedFrom === undefined) return;
-    void seedDemoScheduleOnce(demoScheduleItems(programme)).catch(() => {});
-  }, [programme, !!profile]);
+    if (!profile || program?.shiftedFrom === undefined) return;
+    void seedDemoScheduleOnce(demoScheduleItems(program)).catch(() => {});
+  }, [program, !!profile]);
 
   useEffect(() => {
     getProfile()
@@ -232,15 +232,15 @@ export function App() {
         myTags={profile.tags}
         justConnected={screen.justConnected}
         relay={relay}
-        programme={programme}
+        program={program}
         onBack={() => goTab('people')}
         onRemoved={() => goTab('people')}
       />
     );
   } else if (screen.kind === 'catchup') {
     body = <CatchUpScreen onBack={() => goTab('me')} />;
-  } else if (screen.kind === 'recap' && programme) {
-    body = <RecapScreen programme={programme} onBack={() => goTab('me')} />;
+  } else if (screen.kind === 'recap' && program) {
+    body = <RecapScreen program={program} onBack={() => goTab('me')} />;
   } else if (screen.kind === 'invite') {
     body = (
       <InviteScreen
@@ -254,13 +254,13 @@ export function App() {
         onCancel={() => goTab('today')}
       />
     );
-  } else if (screen.kind === 'sessions' && programme) {
-    body = <AddSessionsScreen programme={programme} initialDay={screen.day} onDone={() => goTab('today')} />;
+  } else if (screen.kind === 'sessions' && program) {
+    body = <AddSessionsScreen program={program} initialDay={screen.day} onDone={() => goTab('today')} />;
   } else if (tab === 'today') {
-    body = programme ? (
+    body = program ? (
       <TodayScreen
         name={profile.displayName}
-        programme={programme}
+        program={program}
         relay={relay}
         myTopics={profile.tags.map((t) => t.key)}
         day={todayDay}
@@ -272,7 +272,7 @@ export function App() {
         onInvite={(draft) => setScreen({ kind: 'invite', draft })}
       />
     ) : (
-      programmeFailed ? (
+      programFailed ? (
         <div class="card stack" role="status">
           <p class="lede">The program hasn’t loaded yet.</p>
           <p>Pebble needs a connection the first time, to download it. It’ll try again when you come back to the app.</p>
@@ -299,7 +299,7 @@ export function App() {
         onEdit={() => setScreen({ kind: 'edit' })}
         onCatchUp={() => setScreen({ kind: 'catchup' })}
         onRecap={() => setScreen({ kind: 'recap' })}
-        programme={programme}
+        program={program}
       />
     );
   }

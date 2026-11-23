@@ -25,7 +25,7 @@ export function toVCard(connections: Connection[], notes: Note[] = []): string {
     .join('\r\n');
 }
 
-// CSV. Quote every cell; double inner quotes; neutralise cells a spreadsheet would run as a formula.
+// CSV. Quote every cell; double inner quotes; neutralize cells a spreadsheet would run as a formula.
 function cell(v: string | number | undefined): string {
   let s = v === undefined ? '' : String(v);
   if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;

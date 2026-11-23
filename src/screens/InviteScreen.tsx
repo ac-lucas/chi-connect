@@ -4,7 +4,7 @@ import { PLACES } from '../data/places';
 import { LIMITS_INVITE } from '../relay/invites';
 import { cleanText } from '../model/text';
 import type { Connection, Invite, InviteKind, MeetingSpot } from '../model/types';
-import { timeRange, timeRangeSpoken } from '../programme/programme';
+import { timeRange, timeRangeSpoken } from '../program/program';
 import { addPeopleToInvite, deliverInvite, KIND_INFO, sendInvite } from '../schedule/invites';
 import type { Transport } from '../relay/transport';
 import { listConnections } from '../storage/db';

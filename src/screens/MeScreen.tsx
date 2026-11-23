@@ -1,24 +1,24 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { toSharedProfile } from '../model/profile';
 import type { Profile } from '../model/types';
-import type { Programme } from '../programme/types';
+import type { Program } from '../program/types';
 import { getSetting, listCatchUp, setSetting, wipeEverything } from '../storage/db';
 import { announce } from '../ui/announce';
 import { useScreenHeading } from '../ui/useScreenHeading';
 import { useLive } from '../ui/useLive';
 import { ProfileCard } from './ProfileCard';
-import { ProgrammeNote } from './ProgrammeNote';
+import { ProgramNote } from './ProgramNote';
 
 interface Props {
   profile: Profile;
   onEdit: () => void;
   onCatchUp: () => void;
   onRecap: () => void;
-  /** For the programme data credit, which lives at the end of this screen. */
-  programme?: Programme | null;
+  /** For the program data credit, which lives at the end of this screen. */
+  program?: Program | null;
 }
 
-export function MeScreen({ profile, onEdit, onCatchUp, onRecap, programme }: Props) {
+export function MeScreen({ profile, onEdit, onCatchUp, onRecap, program }: Props) {
   const heading = useScreenHeading<HTMLHeadingElement>();
   const live = useLive(
     async () => ({ quiet: !!(await getSetting('quietMode')), snoozeUntil: (await getSetting('snoozeUntil')) ?? 0, catchUp: (await listCatchUp()).length }),
@@ -141,7 +141,7 @@ export function MeScreen({ profile, onEdit, onCatchUp, onRecap, programme }: Pro
         )}
       </section>
 
-      {programme && <ProgrammeNote programme={programme} />}
+      {program && <ProgramNote program={program} />}
     </section>
   );
 }

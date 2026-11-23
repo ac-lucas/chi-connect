@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { atMinutes, nextDay, startOfDay } from './programme';
+import { atMinutes, nextDay, startOfDay } from './program';
 
 const original = process.env.TZ;
 afterEach(() => {

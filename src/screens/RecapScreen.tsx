@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
-import type { Programme } from '../programme/types';
-import { nextDay, startOfDay } from '../programme/programme';
+import type { Program } from '../program/types';
+import { nextDay, startOfDay } from '../program/program';
 import { planDay, type Busy } from '../schedule/breaks';
 import { energyToday } from '../schedule/energy';
 import { buildRecap, recapText, type Recap } from '../schedule/recap';
@@ -12,7 +12,7 @@ import { useLive } from '../ui/useLive';
 import { useScreenHeading } from '../ui/useScreenHeading';
 
 /** Recap (F26): your own week in a few cards. Built on this phone from your data; nothing is sent. */
-export function RecapScreen({ programme, onBack }: { programme: Programme; onBack: () => void }) {
+export function RecapScreen({ program, onBack }: { program: Program; onBack: () => void }) {
   const heading = useScreenHeading<HTMLHeadingElement>();
   const [recap, setRecap] = useState<Recap | null>(null);
   const followUps: FollowUp[] = useLive(() => listFollowUps(), ['followUps']) ?? [];
@@ -32,9 +32,9 @@ export function RecapScreen({ programme, onBack }: { programme: Programme; onBac
           .map((i) => ({ id: i.id, start: i.start, end: i.end, kind: i.type === 'session' ? 'session' : i.type === 'protected' ? 'protected' : 'meetup' }));
         breathers += planDay(busy, d, level, undefined, skipped).breaks.filter((b) => b.end < Date.now()).length;
       }
-      setRecap(buildRecap(programme, items, await listInvites(), await listConnections(), await listCatchUp(), breathers));
+      setRecap(buildRecap(program, items, await listInvites(), await listConnections(), await listCatchUp(), breathers));
     })();
-  }, [programme]);
+  }, [program]);
 
   async function copy() {
     if (!recap) return;

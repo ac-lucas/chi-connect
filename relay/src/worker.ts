@@ -1,7 +1,7 @@
 // Cloudflare Workers entry. The edge worker handles CORS, size limits and a high per-address ceiling, then
 // routes each request to one small SQLite-backed Durable Object: the device's home (its mailboxes) or one shard
 // of six-digit codes. Each object is strongly consistent, so a code can only be redeemed once. Platform
-// behaviour (limits, billing, alarms): verify against current docs.
+// behavior (limits, billing, alarms): verify against current docs.
 import { DurableObject } from 'cloudflare:workers';
 import { clientPrefix, codeShard, CodesCore, HomeCore, RateLimiter, type RelayResponse, type Sql } from './core';
 

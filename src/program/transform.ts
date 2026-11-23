@@ -1,13 +1,13 @@
-// Turn the programme feed (the scheduling system's native export, schemeVersion 7) into the app's small
-// Programme shape. The feed is untrusted input: every field is type-checked, cleaned and size-limited,
+// Turn the program feed (the scheduling system's native export, schemeVersion 7) into the app's small
+// Program shape. The feed is untrusted input: every field is type-checked, cleaned and size-limited,
 // and anything malformed is dropped rather than shown.
 import { KNOWN_TAGS } from '../data/tags';
-import { normaliseTagText } from '../model/tags';
+import { normalizeTagText } from '../model/tags';
 import { cleanText } from '../model/text';
-import type { Programme, ProgrammeSession, SessionFormat } from './types';
+import type { Program, ProgramSession, SessionFormat } from './types';
 
 export const MAX_SESSIONS = 5000;
-export const PROGRAMME_CREDIT = 'Programme data © ACM CHI 2027, licensed under CC BY-NC-SA 4.0.';
+export const PROGRAM_CREDIT = 'Program data © ACM CHI 2027, licensed under CC BY-NC-SA 4.0.';
 const MAX_TITLE = 300;
 const MAX_ROOM = 120;
 const MAX_PAPERS = 12;
@@ -18,10 +18,10 @@ export interface FeedPaper {
   url: string;
 }
 
-export interface FeedProgramme extends Programme {
+export interface FeedProgram extends Program {
   edition: string;
   revision: number;
-  /** IANA time zone the programme is in, if the feed gave a valid one. */
+  /** IANA time zone the program is in, if the feed gave a valid one. */
   timeZone?: string;
   credit: string;
 }
@@ -55,7 +55,7 @@ export function formatFor(typeName: string): SessionFormat {
 }
 
 // Topic matching from titles. Two-letter aliases (VR, AR, AI, UX) only count in capitals, so "ar" in other
-// languages or inside words doesn't match. Everything else matches whole words after normalising.
+// languages or inside words doesn't match. Everything else matches whole words after normalizing.
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const topicPatterns = KNOWN_TAGS.flatMap((t) =>
   [t.label, ...t.aliases].map((name) => {
@@ -65,7 +65,7 @@ const topicPatterns = KNOWN_TAGS.flatMap((t) =>
       re: short
         ? new RegExp(`(^|[^A-Za-z])${name.toUpperCase()}([^A-Za-z]|$)`)
         : // Whole words, with an optional plural "s" ("haptic" matches "Haptics", "wearable" matches "Wearables").
-          new RegExp(`(^| )${escape(normaliseTagText(name).replace(/s$/, ''))}s?( |$)`),
+          new RegExp(`(^| )${escape(normalizeTagText(name).replace(/s$/, ''))}s?( |$)`),
       raw: short,
     };
   }),
@@ -73,7 +73,7 @@ const topicPatterns = KNOWN_TAGS.flatMap((t) =>
 
 export function topicsFromText(texts: string[], limit = 6): string[] {
   const raw = texts.join(' • ');
-  const norm = ` ${normaliseTagText(raw)} `;
+  const norm = ` ${normalizeTagText(raw)} `;
   const found: string[] = [];
   for (const p of topicPatterns) {
     if (found.includes(p.id)) continue;
@@ -118,13 +118,13 @@ function validTimeZone(tz: unknown): string | undefined {
   }
 }
 
-/** Throws if the feed isn't recognisably a programme. Otherwise returns what could be kept. */
-export function transformFeed(raw: unknown, edition: string, revision: number): FeedProgramme {
+/** Throws if the feed isn't recognizably a program. Otherwise returns what could be kept. */
+export function transformFeed(raw: unknown, edition: string, revision: number): FeedProgram {
   const feed = obj(raw);
-  if (!feed || int(feed.schemeVersion) === null || !Array.isArray(feed.sessions)) throw new Error('not-a-programme');
+  if (!feed || int(feed.schemeVersion) === null || !Array.isArray(feed.sessions)) throw new Error('not-a-program');
   const conf = obj(feed.conference) ?? {};
   const year = int(conf.year);
-  const name = text(conf.name, 60) || 'the programme';
+  const name = text(conf.name, 60) || 'the program';
 
   const byId = <T>(list: unknown, f: (o: Obj) => T | null) => {
     const m = new Map<number, T>();
@@ -151,7 +151,7 @@ export function transformFeed(raw: unknown, edition: string, revision: number): 
     return title ? { title, doi } : null;
   });
 
-  const sessions: ProgrammeSession[] = [];
+  const sessions: ProgramSession[] = [];
   const add = (o: Obj, kind: 'session' | 'event', start: number | null, end: number | null) => {
     const id = int(o.id);
     const title = text(o.name, MAX_TITLE);
@@ -163,7 +163,7 @@ export function transformFeed(raw: unknown, edition: string, revision: number): 
       .map((c) => contents.get(int(c) ?? -1))
       .filter((c): c is { title: string; doi: string | null } => !!c);
     const room = rooms.get(int(o.roomId) ?? -1);
-    const s: ProgrammeSession = {
+    const s: ProgramSession = {
       id: `${kind === 'session' ? 's' : 'e'}${id}`,
       title,
       start,
@@ -192,12 +192,12 @@ export function transformFeed(raw: unknown, edition: string, revision: number): 
 
   sessions.sort((a, b) => a.start - b.start || a.title.localeCompare(b.title));
   return {
-    name: year ? name : 'Programme',
+    name: year ? name : 'Program',
     sessions,
     edition,
     revision,
     timeZone: validTimeZone(conf.timeZoneName),
-    // The attribution line the data's licence file gives for this project.
-    credit: PROGRAMME_CREDIT,
+    // The attribution line the data's license file gives for this project.
+    credit: PROGRAM_CREDIT,
   };
 }

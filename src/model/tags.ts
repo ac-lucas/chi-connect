@@ -3,7 +3,7 @@ import { cleanText, LIMITS } from './text';
 import type { Tag } from './types';
 
 /** Lower-case, fold compatibility forms, turn punctuation into spaces. Keeps letters in any script. */
-export function normaliseTagText(text: string): string {
+export function normalizeTagText(text: string): string {
   return text
     .normalize('NFKC')
     .toLowerCase()
@@ -14,7 +14,7 @@ export function normaliseTagText(text: string): string {
 
 const index = new Map<string, KnownTag>();
 for (const t of KNOWN_TAGS) {
-  for (const name of [t.label, t.id, ...t.aliases]) index.set(normaliseTagText(name), t);
+  for (const name of [t.label, t.id, ...t.aliases]) index.set(normalizeTagText(name), t);
 }
 
 const byId = new Map(KNOWN_TAGS.map((t) => [t.id, t]));
@@ -32,7 +32,7 @@ export function knownTag(t: KnownTag): Tag {
 /** Turn typed text into a tag: a known topic if it matches one (or an alias), otherwise a custom tag. */
 export function resolveTag(text: string): Tag | null {
   const label = cleanText(text, LIMITS.tagLabel);
-  const norm = normaliseTagText(label);
+  const norm = normalizeTagText(label);
   if (!norm) return null;
   const known = index.get(norm);
   if (known) return knownTag(known);
@@ -41,9 +41,9 @@ export function resolveTag(text: string): Tag | null {
 
 /** Known topics whose label or aliases contain the query. Empty query returns all. */
 export function searchKnownTags(query: string): KnownTag[] {
-  const q = normaliseTagText(query);
+  const q = normalizeTagText(query);
   if (!q) return [...KNOWN_TAGS];
-  return KNOWN_TAGS.filter((t) => [t.label, ...t.aliases].some((n) => normaliseTagText(n).includes(q)));
+  return KNOWN_TAGS.filter((t) => [t.label, ...t.aliases].some((n) => normalizeTagText(n).includes(q)));
 }
 
 /** Tags both people have, matched on the canonical key. Order follows `mine`. */

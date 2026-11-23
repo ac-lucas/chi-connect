@@ -1,6 +1,6 @@
 // Today's energy (F22). One tap, changeable any time. No level is the "good" one.
 import type { EnergyLevel, EnergySetting } from '../model/types';
-import { dayKey } from '../programme/programme';
+import { dayKey } from '../program/program';
 
 export const DEFAULT_ENERGY: EnergyLevel = 'up-for-it';
 

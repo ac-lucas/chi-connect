@@ -37,7 +37,7 @@ function countingRelay() {
   return { relay, sent };
 }
 
-const save = (pid: string) => putScheduleItem({ id: randomId(), type: 'session', source: 'user', title: pid, start: 1, end: 2, programmeSessionId: pid });
+const save = (pid: string) => putScheduleItem({ id: randomId(), type: 'session', source: 'user', title: pid, start: 1, end: 2, programSessionId: pid });
 
 describe('sharing my saved sessions', () => {
   it('takes the list back even when the switch is flipped from an out-of-date copy', async () => {

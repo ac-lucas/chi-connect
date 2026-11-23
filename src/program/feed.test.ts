@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { checkFeed, isRevisionUrl, POLL_MS } from './feed';
 import { isOver, shiftToAnchor } from './preview';
-import type { Programme } from './types';
+import type { Program } from './types';
 
 const BASE = 'https://feed.example/data';
 const T0 = 1_776_157_200_000;
-const programmeFile = {
+const programFile = {
   schemeVersion: 7,
   conference: { name: 'Example 2026', year: 2026 },
   timeSlots: [{ id: 1, startDate: T0, endDate: T0 + 5_400_000 }],
@@ -37,17 +37,17 @@ describe('checkFeed', () => {
   it('with polling off, a new install fetches the frozen preview once and never asks for 2027', async () => {
     const { f, calls } = fakeFetch({
       [`${BASE}/chi2026/version.json`]: { body: version('chi2026', 1) },
-      [`${BASE}/chi2026/revisions/001.json`]: { body: programmeFile },
+      [`${BASE}/chi2026/revisions/001.json`]: { body: programFile },
     });
     const r = await checkFeed(null, 0, { now: 1e12, fetchImpl: f, base: BASE });
-    expect(r.programme?.edition).toBe('chi2026');
+    expect(r.program?.edition).toBe('chi2026');
     expect(calls).toEqual([`${BASE}/chi2026/version.json?t=1000000000000`, `${BASE}/chi2026/revisions/001.json`]);
   });
 
-  it('with polling off and a programme held, makes no requests at all', async () => {
+  it('with polling off and a program held, makes no requests at all', async () => {
     const { f, calls } = fakeFetch({});
     const r = await checkFeed({ edition: 'chi2026', revision: 1 }, 0, { now: 1e12, fetchImpl: f, base: BASE });
-    expect(r).toEqual({ programme: null, checked: false });
+    expect(r).toEqual({ program: null, checked: false });
     expect(calls).toEqual([]);
   });
 
@@ -65,37 +65,37 @@ describe('checkFeed', () => {
   });
 
   describe('once polling the newest edition is switched on', () => {
-    it('polls only 2027 when a programme is held, and downloads only when the revision moves', async () => {
+    it('polls only 2027 when a program is held, and downloads only when the revision moves', async () => {
       const { f, calls } = fakeFetch({ [`${BASE}/chi2027/version.json`]: { body: version('chi2027', 17) } });
-      expect(await checkFeed({ edition: 'chi2027', revision: 17 }, 0, { now: 1e12, fetchImpl: f, base: BASE, pollNewest: true })).toEqual({ programme: null, checked: true });
+      expect(await checkFeed({ edition: 'chi2027', revision: 17 }, 0, { now: 1e12, fetchImpl: f, base: BASE, pollNewest: true })).toEqual({ program: null, checked: true });
       expect(calls).toHaveLength(1);
     });
 
-    it('never swaps a held programme for the preview when 2027 has a hiccup', async () => {
+    it('never swaps a held program for the preview when 2027 has a hiccup', async () => {
       const { f, calls } = fakeFetch({ [`${BASE}/chi2027/version.json`]: { status: 503, body: {} } });
-      expect((await checkFeed({ edition: 'chi2027', revision: 5 }, 0, { now: 1e12, fetchImpl: f, base: BASE, pollNewest: true })).programme).toBeNull();
+      expect((await checkFeed({ edition: 'chi2027', revision: 5 }, 0, { now: 1e12, fetchImpl: f, base: BASE, pollNewest: true })).program).toBeNull();
       expect(calls.every((c) => c.includes('chi2027'))).toBe(true);
     });
 
     it('moves from the preview to 2027 when it appears', async () => {
       const { f } = fakeFetch({
         [`${BASE}/chi2027/version.json`]: { body: version('chi2027', 1) },
-        [`${BASE}/chi2027/revisions/001.json`]: { body: programmeFile },
+        [`${BASE}/chi2027/revisions/001.json`]: { body: programFile },
       });
-      expect((await checkFeed({ edition: 'chi2026', revision: 1 }, 0, { now: 1e12, fetchImpl: f, base: BASE, pollNewest: true })).programme?.edition).toBe('chi2027');
+      expect((await checkFeed({ edition: 'chi2026', revision: 1 }, 0, { now: 1e12, fetchImpl: f, base: BASE, pollNewest: true })).program?.edition).toBe('chi2027');
     });
   });
 
   it('never asks more than once a minute', async () => {
     const { f, calls } = fakeFetch({});
     const r = await checkFeed(null, 1e12 - POLL_MS + 1, { now: 1e12, fetchImpl: f, base: BASE });
-    expect(r).toEqual({ programme: null, checked: false });
+    expect(r).toEqual({ program: null, checked: false });
     expect(calls).toHaveLength(0);
   });
 
   it('refuses a revision URL that points anywhere else', async () => {
     const { f, calls } = fakeFetch({ [`${BASE}/chi2026/version.json`]: { body: { revision: 2, revision_url: 'https://evil.example/x.json' } } });
-    expect((await checkFeed(null, 0, { now: 1e12, fetchImpl: f, base: BASE })).programme).toBeNull();
+    expect((await checkFeed(null, 0, { now: 1e12, fetchImpl: f, base: BASE })).program).toBeNull();
     expect(calls).toHaveLength(1);
   });
 
@@ -103,12 +103,12 @@ describe('checkFeed', () => {
     const offline = (async () => {
       throw new TypeError('offline');
     }) as typeof fetch;
-    expect((await checkFeed(null, 0, { now: 1e12, fetchImpl: offline, base: BASE })).programme).toBeNull();
+    expect((await checkFeed(null, 0, { now: 1e12, fetchImpl: offline, base: BASE })).program).toBeNull();
     const { f } = fakeFetch({
       [`${BASE}/chi2027/version.json`]: { body: version('chi2027', 3) },
-      [`${BASE}/chi2027/revisions/003.json`]: { body: { not: 'a programme' } },
+      [`${BASE}/chi2027/revisions/003.json`]: { body: { not: 'a program' } },
     });
-    expect((await checkFeed(null, 0, { now: 1e12, fetchImpl: f, base: BASE })).programme).toBeNull();
+    expect((await checkFeed(null, 0, { now: 1e12, fetchImpl: f, base: BASE })).program).toBeNull();
   });
 });
 
@@ -125,8 +125,8 @@ describe('isRevisionUrl', () => {
 
 describe('preview', () => {
   const H = 3_600_000;
-  // 13 April 2026, 09:00 and 15:30 in the programme's time zone (UTC+2), and a session the next day.
-  const p: Programme = {
+  // 13 April 2026, 09:00 and 15:30 in the program's time zone (UTC+2), and a session the next day.
+  const p: Program = {
     name: 'Example',
     sessions: [
       { id: 'a', title: 'A', start: Date.UTC(2026, 3, 13, 7, 0), end: Date.UTC(2026, 3, 13, 8, 30), format: 'papers', topics: [] },
@@ -135,12 +135,12 @@ describe('preview', () => {
     ],
   };
 
-  it('knows when a programme is over', () => {
+  it('knows when a program is over', () => {
     expect(isOver(p, Date.UTC(2026, 10, 4))).toBe(true);
     expect(isOver(p, Date.UTC(2026, 3, 13, 12))).toBe(false);
   });
 
-  it('moves day 1 to the anchor, keeping the programme’s own wall-clock times and durations', () => {
+  it('moves day 1 to the anchor, keeping the program’s own wall-clock times and durations', () => {
     const anchor = new Date(2026, 10, 4).getTime(); // local midnight
     const s = shiftToAnchor(p, anchor, 'Europe/Madrid').sessions;
     const local = (t: number) => {

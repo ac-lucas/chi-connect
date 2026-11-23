@@ -32,7 +32,7 @@ describe('vCard', () => {
 });
 
 describe('CSV', () => {
-  it('quotes cells and neutralises formulas', () => {
+  it('quotes cells and neutralizes formulas', () => {
     const csv = toCsv([c('a', { displayName: '=HYPERLINK("x")', role: '+1', company: '-bad' })], notes, fus);
     const [, line] = csv.split('\r\n');
     expect(line).toMatch(/^"'=HYPERLINK\(""x""\)","'\+1","'-bad"/);
@@ -55,10 +55,10 @@ describe('ICS', () => {
 });
 
 describe('catch-up export', () => {
-  it('lists each paper with its link, escapes cells and neutralises formulas', () => {
+  it('lists each paper with its link, escapes cells and neutralizes formulas', () => {
     const csv = toCatchUpCsv([
-      { programmeSessionId: 's1', title: 'Haptics, "and" more', start: new Date(2027, 3, 13, 9).getTime(), reason: 'clash', addedAt: 0, papers: [{ title: '=cmd', url: 'https://doi.org/10.1/x' }, { title: 'B', url: 'https://doi.org/10.1/y' }] },
-      { programmeSessionId: 's2', title: 'No papers', start: new Date(2027, 3, 12, 9).getTime(), reason: 'saved', addedAt: 0 },
+      { programSessionId: 's1', title: 'Haptics, "and" more', start: new Date(2027, 3, 13, 9).getTime(), reason: 'clash', addedAt: 0, papers: [{ title: '=cmd', url: 'https://doi.org/10.1/x' }, { title: 'B', url: 'https://doi.org/10.1/y' }] },
+      { programSessionId: 's2', title: 'No papers', start: new Date(2027, 3, 12, 9).getTime(), reason: 'saved', addedAt: 0 },
     ]);
     const lines = csv.trim().split('\r\n');
     expect(lines[0]).toBe('"Session","Date","Why","Paper","Link"');

@@ -3,8 +3,8 @@ import { pickLine, talkOpeners } from '../data/icebreakers';
 import { knownTagById } from '../model/tags';
 import { randomId } from '../model/ids';
 import type { Connection, EnergyLevel, ScheduleItem } from '../model/types';
-import { atMinutes, dayKey, nextDay, timeRange, timeRangeSpoken, clockTime } from '../programme/programme';
-import type { Programme } from '../programme/types';
+import { atMinutes, dayKey, nextDay, timeRange, timeRangeSpoken, clockTime } from '../program/program';
+import type { Program } from '../program/types';
 import type { Busy, PlannedBreak } from '../schedule/breaks';
 import { alsoGoing, namesList } from '../schedule/overlap';
 import { findClashes, freeGaps, inSomething, pickWildcard, recentlyEnded, topicLine } from '../schedule/suggest';
@@ -15,7 +15,7 @@ import { useLive } from '../ui/useLive';
 import type { InviteDraft } from './InviteScreen';
 
 interface Props {
-  programme: Programme;
+  program: Program;
   items: ScheduleItem[];
   connections: Connection[];
   level: EnergyLevel;
@@ -39,7 +39,7 @@ const clock = clockTime;
  * and a wildcard session (F15) when energy is Charged. Quiet mode, snooze and the daily cap (F18) apply to everything
  * except clashes, which are about your own plan. Nothing shows during a session or protected time.
  */
-export function SuggestionsPanel({ programme, items, connections, level, breaks, day, isToday, now, myTopics, onInvite }: Props) {
+export function SuggestionsPanel({ program, items, connections, level, breaks, day, isToday, now, myTopics, onInvite }: Props) {
   const settings = useLive(
     async () => ({ dismissed: (await getSetting('dismissed')) ?? [], quiet: !!(await getSetting('quietMode')), snoozeUntil: (await getSetting('snoozeUntil')) ?? 0 }),
     ['settings'],
@@ -59,16 +59,16 @@ export function SuggestionsPanel({ programme, items, connections, level, breaks,
   // F23: a clash between two saved sessions. Keep one; the other goes to Catch up later with its papers.
   const clash = findClashes(daySaved).find(([a, b]) => !dismissed.includes(`clash:${a.id}:${b.id}`));
   async function keep(keepIt: ScheduleItem, other: ScheduleItem) {
-    const s = programme.sessions.find((x) => x.id === other.programmeSessionId);
-    await putCatchUp({ programmeSessionId: other.programmeSessionId ?? other.id, title: other.title, start: other.start, papers: s?.papers, reason: 'clash', addedAt: Date.now() });
+    const s = program.sessions.find((x) => x.id === other.programSessionId);
+    await putCatchUp({ programSessionId: other.programSessionId ?? other.id, title: other.title, start: other.start, papers: s?.papers, reason: 'clash', addedAt: Date.now() });
     await deleteScheduleItem(other.id);
     announce(`Kept ${keepIt.title}. ${other.title} is in Catch up later${s?.papers?.length ? ', with its papers' : ''}.`);
   }
 
   // F24 / F16: a session just ended.
   const ended = isToday ? recentlyEnded(saved, now) : null;
-  const endedSession = ended && programme.sessions.find((s) => s.id === ended.programmeSessionId);
-  const going = ended ? alsoGoing(ended.programmeSessionId, connections) : [];
+  const endedSession = ended && program.sessions.find((s) => s.id === ended.programSessionId);
+  const going = ended ? alsoGoing(ended.programSessionId, connections) : [];
   const topic = endedSession?.topics[0] ? (knownTagById(endedSession.topics[0])?.label ?? null) : null;
   const talkKey = ended ? `talk:${ended.id}` : '';
   const nudgeKey = ended ? `nudge:${ended.id}` : '';
@@ -94,14 +94,14 @@ export function SuggestionsPanel({ programme, items, connections, level, breaks,
     const from = Math.max(now, atMinutes(day, 8 * 60));
     lastEnd = Math.max(atMinutes(day, 18 * 60), ...busy.map((b) => b.end));
     const gaps = freeGaps([...busy, { id: 'end', start: lastEnd, end: lastEnd + MIN, kind: 'session' }], from, 30);
-    wildcard = pickWildcard(programme, gaps, myTopics, new Set(saved.map((s) => s.programmeSessionId ?? '')));
+    wildcard = pickWildcard(program, gaps, myTopics, new Set(saved.map((s) => s.programSessionId ?? '')));
   }
   const wildGoing = wildcard ? alsoGoing(wildcard.session.id, connections) : [];
 
   async function addWildcard() {
     if (!wildcard) return;
     const s = wildcard.session;
-    await putScheduleItem({ id: randomId(), type: 'session', source: 'user', programmeSessionId: s.id, title: s.title, place: s.room, start: s.start, end: s.end, fromWildcard: true });
+    await putScheduleItem({ id: randomId(), type: 'session', source: 'user', programSessionId: s.id, title: s.title, place: s.room, start: s.start, end: s.end, fromWildcard: true });
     announce(`Added ${s.title}. Enjoy the detour.`);
   }
 
@@ -129,7 +129,7 @@ export function SuggestionsPanel({ programme, items, connections, level, breaks,
         <div data-row class="card stack heads-up">
           <p>
             <strong>Two at once.</strong> Keep one, and the other goes to Catch up later
-            {programme.sessions.find((s) => s.id === clash[1].programmeSessionId)?.papers?.length ? ' with its papers' : ''}.
+            {program.sessions.find((s) => s.id === clash[1].programSessionId)?.papers?.length ? ' with its papers' : ''}.
           </p>
           {/* Full titles, each with its own Keep button: titles are long, so they never go inside a button. */}
           <ul class="clash-options">
@@ -171,7 +171,7 @@ export function SuggestionsPanel({ programme, items, connections, level, breaks,
               class="button"
               onClick={() => {
                 const start = Math.ceil((Date.now() + 5 * MIN) / (5 * MIN)) * 5 * MIN;
-                onInvite({ kinds: ['catch-up'], start, end: start + 10 * MIN, sessionId: ended.programmeSessionId, sessionTitle: ended.title, room: ended.place, preselect: going.map((g) => g.id) });
+                onInvite({ kinds: ['catch-up'], start, end: start + 10 * MIN, sessionId: ended.programSessionId, sessionTitle: ended.title, room: ended.place, preselect: going.map((g) => g.id) });
               }}
             >
               Invite {going.length === 1 ? going[0]!.profile.displayName : 'them'}
@@ -185,7 +185,7 @@ export function SuggestionsPanel({ programme, items, connections, level, breaks,
         <div data-row class="card stack suggestion">
           <p>
             <strong>{ended.title}</strong> just ended.
-            {endedSession && topicLine(programme, endedSession) ? ` ${topicLine(programme, endedSession)}` : ''}
+            {endedSession && topicLine(program, endedSession) ? ` ${topicLine(program, endedSession)}` : ''}
           </p>
           <p>
             If you get chatting on the way out: <em>{pickLine('after-talk', ended.id)}</em>

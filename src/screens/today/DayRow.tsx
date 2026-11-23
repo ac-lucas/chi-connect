@@ -1,7 +1,7 @@
 // One row of the day plan with its actions. Changes are written to storage; the screen reloads by itself.
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Connection, Invite, ScheduleItem } from '../../model/types';
-import { clockTime as clock, timeRange, timeRangeSpoken } from '../../programme/programme';
+import { clockTime as clock, timeRange, timeRangeSpoken } from '../../program/program';
 import type { PlannedBreak } from '../../schedule/breaks';
 import { cancelInvite, declineInvite, inviteTitle } from '../../schedule/invites';
 import { alsoGoing, namesList } from '../../schedule/overlap';
@@ -65,7 +65,7 @@ async function leaveOrCancel(r: InviteRow, relay: Transport | null) {
 }
 
 export function DayRow({ r, now, connections, nameOf, relay, onInviteFromSession, onInviteFromBreak, onInviteMore, onShowShape, highlighted, clashWith, quiet }: Props) {
-  const going = r.kind === 'session' ? alsoGoing(r.item.programmeSessionId, connections) : [];
+  const going = r.kind === 'session' ? alsoGoing(r.item.programSessionId, connections) : [];
   const past = rowEnd(r) <= now;
   const canInvite = rowEnd(r) > now + MIN_INVITE_MS;
   const m = meetupOf(r);
@@ -194,7 +194,7 @@ export function DayRow({ r, now, connections, nameOf, relay, onInviteFromSession
 }
 
 /** The full-screen doodle card opens for a meetup you're in, and for one you sent before anyone says yes (it waits). */
-const canHoldUp = (r: InviteRow) => isOnMeetup(r) || (!!r.invite?.outgoing && r.invite.status !== 'cancelled');
+const canHoldUp = (r: InviteRow) => isOnMeetup(r) || (!!r.invite?.outgoing && r.invite.status !== 'canceled');
 const holdUpLabel = (inv: Invite) => (inv.outgoing && inv.acceptedIds.length === 0 ? 'Your doodle' : 'Hold up their drawing');
 
 /** Hold up their drawing, and Leave (or Call off, which asks first: it tells everyone and can't be undone). */

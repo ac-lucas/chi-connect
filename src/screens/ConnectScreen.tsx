@@ -266,7 +266,7 @@ export function ConnectScreen({ profile, relay, initialCode, onOneWayCode, onCon
 
           <section class="card stack match" aria-labelledby="match-heading">
             <h3 id="match-heading">Your shape</h3>
-            <div class="match-card" style={{ background: match.colour.bg, color: match.colour.fg }}>
+            <div class="match-card" style={{ background: match.color.bg, color: match.color.fg }}>
               <ShapeGraphic card={match} size="5rem" idSuffix="match" />
               <p class="match-word">{match.word}</p>
               <p class="match-pattern">{match.pattern}</p>

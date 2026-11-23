@@ -1,9 +1,9 @@
-// The programme: sessions people can add to their day. Comes from the programme feed once wired in;
-// until then from the labelled sample programme (src/programme/sample.ts).
+// The program: sessions people can add to their day. Comes from the program feed once wired in;
+// until then from the labeled sample program (src/program/sample.ts).
 
 export type SessionFormat = 'keynote' | 'papers' | 'panel' | 'workshop' | 'posters' | 'demos' | 'other';
 
-export interface ProgrammeSession {
+export interface ProgramSession {
   id: string;
   title: string;
   start: number;
@@ -17,12 +17,12 @@ export interface ProgrammeSession {
   papers?: { title: string; url: string }[];
 }
 
-export interface Programme {
+export interface Program {
   name: string;
-  sessions: ProgrammeSession[];
+  sessions: ProgramSession[];
   /** Set when the days were moved to start today for a preview (the original first day, local midnight). */
   shiftedFrom?: number;
-  /** Licence credit to show wherever the programme appears. */
+  /** License credit to show wherever the program appears. */
   credit?: string;
 }
 

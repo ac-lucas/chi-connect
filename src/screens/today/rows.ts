@@ -26,7 +26,7 @@ export function buildRows(dayItems: ScheduleItem[], breaks: PlannedBreak[], invi
     if (item.type !== 'session') continue;
     const row = { kind: 'session' as const, item };
     rows.push(row);
-    if (item.programmeSessionId && !sessionRows.has(item.programmeSessionId)) sessionRows.set(item.programmeSessionId, row);
+    if (item.programSessionId && !sessionRows.has(item.programSessionId)) sessionRows.set(item.programSessionId, row);
   }
   for (const item of dayItems) {
     if (item.type === 'protected') rows.push({ kind: 'protected', item });
@@ -34,7 +34,7 @@ export function buildRows(dayItems: ScheduleItem[], breaks: PlannedBreak[], invi
       const invite = item.inviteId ? invitesById.get(item.inviteId) : undefined;
       // Sitting together at a session you saved: one block. Anything else (lunch, a break, arriving or walking
       // over together beforehand, sitting together at a session you haven't saved) keeps its own row.
-      const host = invite?.kind === 'sit-together' && item.programmeSessionId ? sessionRows.get(item.programmeSessionId) : undefined;
+      const host = invite?.kind === 'sit-together' && item.programSessionId ? sessionRows.get(item.programSessionId) : undefined;
       if (host && invite && !host.meetup) host.meetup = { item, invite };
       else rows.push({ kind: 'invite', item, invite });
     }

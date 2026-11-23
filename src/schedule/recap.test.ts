@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { CatchUpItem, Connection, Invite, ScheduleItem } from '../model/types';
-import { testProgramme } from '../test/programme';
+import { testProgram } from '../test/program';
 import { buildRecap, recapText } from './recap';
 
-const p = testProgramme();
+const p = testProgram();
 const s = (id: string, extra: Partial<ScheduleItem> = {}): ScheduleItem => {
   const ps = p.sessions.find((x) => x.id === id)!;
-  return { id: `i-${id}`, type: 'session', source: 'user', title: ps.title, start: ps.start, end: ps.end, programmeSessionId: id, ...extra };
+  return { id: `i-${id}`, type: 'session', source: 'user', title: ps.title, start: ps.start, end: ps.end, programSessionId: id, ...extra };
 };
 
 describe('buildRecap', () => {

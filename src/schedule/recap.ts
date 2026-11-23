@@ -2,7 +2,7 @@
 // No rankings, no comparisons with anyone else, nothing about what you skipped.
 import { KNOWN_TAGS } from '../data/tags';
 import type { CatchUpItem, Connection, Invite, ScheduleItem } from '../model/types';
-import type { Programme } from '../programme/types';
+import type { Program } from '../program/types';
 
 export interface Recap {
   days: number;
@@ -18,7 +18,7 @@ export interface Recap {
 }
 
 export function buildRecap(
-  p: Programme,
+  p: Program,
   items: ScheduleItem[],
   invites: Invite[],
   connections: Connection[],
@@ -28,14 +28,14 @@ export function buildRecap(
   const sessions = items.filter((i) => i.type === 'session');
   const topicCounts = new Map<string, number>();
   for (const s of sessions) {
-    const ps = p.sessions.find((x) => x.id === s.programmeSessionId);
+    const ps = p.sessions.find((x) => x.id === s.programSessionId);
     for (const t of ps?.topics ?? []) topicCounts.set(t, (topicCounts.get(t) ?? 0) + 1);
   }
   const topics = [...topicCounts]
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
     .map(([id, count]) => ({ label: KNOWN_TAGS.find((t) => t.id === id)?.label ?? id, count }));
-  const meetups = invites.filter((i) => (i.outgoing ? i.acceptedIds.length > 0 && i.status !== 'cancelled' : i.status === 'accepted')).length;
+  const meetups = invites.filter((i) => (i.outgoing ? i.acceptedIds.length > 0 && i.status !== 'canceled' : i.status === 'accepted')).length;
   return {
     days: new Set(sessions.map((s) => new Date(s.start).toDateString())).size,
     sessions: sessions.length,

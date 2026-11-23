@@ -82,7 +82,7 @@ export function useRelaySync(relay: Transport | null, enabled: boolean): void {
           r.newRequests.length > 0 ||
           conns.some((c) => c.state === 'pending-sent') ||
           (await getIntros()).some((i) => i.expiresAt > now) ||
-          (await listInvites()).some((i) => i.end > now && i.status !== 'declined' && i.status !== 'cancelled');
+          (await listInvites()).some((i) => i.end > now && i.status !== 'declined' && i.status !== 'canceled');
         // The relay held some mail back (reply size cap): fetch the rest straight away.
         next = r.more ? SYNC_MORE_MS : expecting ? SYNC_ACTIVE_MS : SYNC_IDLE_MS;
       } catch {

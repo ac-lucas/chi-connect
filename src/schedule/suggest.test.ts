@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { openerFor, personOpeners, talkOpeners, pickLine } from '../data/icebreakers';
 import type { ScheduleItem } from '../model/types';
-import type { Programme, ProgrammeSession } from '../programme/types';
+import type { Program, ProgramSession } from '../program/types';
 import { findClashes, freeGaps, inSomething, pickWildcard, recentlyEnded, topicLine } from './suggest';
 
 const M = 60_000;
 const T0 = new Date(2027, 3, 12, 0, 0).getTime();
 const at = (h: number, m = 0) => T0 + (h * 60 + m) * M;
-const ses = (id: string, from: number, to: number, topics: string[]): ProgrammeSession => ({ id, title: id, start: from, end: to, format: 'papers', topics });
-const item = (id: string, from: number, to: number, type: ScheduleItem['type'] = 'session'): ScheduleItem => ({ id, type, source: 'user', title: id, start: from, end: to, programmeSessionId: id });
+const ses = (id: string, from: number, to: number, topics: string[]): ProgramSession => ({ id, title: id, start: from, end: to, format: 'papers', topics });
+const item = (id: string, from: number, to: number, type: ScheduleItem['type'] = 'session'): ScheduleItem => ({ id, type, source: 'user', title: id, start: from, end: to, programSessionId: id });
 
-const programme: Programme = {
+const program: Program = {
   name: 'x',
   sessions: [
     ses('mine', at(9), at(10, 30), ['haptics']),
@@ -32,14 +32,14 @@ describe('freeGaps', () => {
 
 describe('pickWildcard', () => {
   it('picks a session next to my topics, not on them, that fits a gap', () => {
-    const w = pickWildcard(programme, [{ start: at(13, 50), end: at(15, 30) }], ['haptics'], new Set());
-    expect(w?.session.id).toBe('vr-only'); // VR sits next to haptics in this programme; robots doesn't
+    const w = pickWildcard(program, [{ start: at(13, 50), end: at(15, 30) }], ['haptics'], new Set());
+    expect(w?.session.id).toBe('vr-only'); // VR sits next to haptics in this program; robots doesn't
     expect(w?.near).toBe('Haptics');
   });
   it('leaves out sessions that do not fit, are excluded, or are on my own topics', () => {
-    expect(pickWildcard(programme, [{ start: at(14, 30), end: at(15, 30) }], ['haptics'], new Set())).toBeNull();
-    expect(pickWildcard(programme, [{ start: at(13, 50), end: at(15, 30) }], ['haptics'], new Set(['vr-only']))?.session.id).toBe('robots-only');
-    expect(pickWildcard(programme, [], ['haptics'], new Set())).toBeNull();
+    expect(pickWildcard(program, [{ start: at(14, 30), end: at(15, 30) }], ['haptics'], new Set())).toBeNull();
+    expect(pickWildcard(program, [{ start: at(13, 50), end: at(15, 30) }], ['haptics'], new Set(['vr-only']))?.session.id).toBe('robots-only');
+    expect(pickWildcard(program, [], ['haptics'], new Set())).toBeNull();
   });
 });
 
@@ -72,10 +72,10 @@ describe('clashes, recently ended, in something', () => {
 });
 
 describe('lines', () => {
-  it('only states real counts from the programme', () => {
-    expect(topicLine(programme, { topics: ['vr'] })).toBe('Virtual reality comes up in 3 sessions in this program.');
-    expect(topicLine(programme, { topics: ['robots'] })).toBeNull(); // only once: not worth saying
-    expect(topicLine(programme, { topics: [] })).toBeNull();
+  it('only states real counts from the program', () => {
+    expect(topicLine(program, { topics: ['vr'] })).toBe('Virtual reality comes up in 3 sessions in this program.');
+    expect(topicLine(program, { topics: ['robots'] })).toBeNull(); // only once: not worth saying
+    expect(topicLine(program, { topics: [] })).toBeNull();
   });
   it('builds openers from the title and topic only, and picks lines steadily', () => {
     const o = talkOpeners('Haptics + XR', 'Haptics');

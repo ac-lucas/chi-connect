@@ -132,7 +132,7 @@ legend { font-weight: 700; padding: 0 0.25rem; }
 .check { display: flex; align-items: center; gap: 0.75rem; min-height: var(--min-target); }
 .check input { width: 1.375rem; height: 1.375rem; accent-color: var(--accent); }
 
-/* Chips (topic tags). Selected state uses a tick and weight as well as colour. */
+/* Chips (topic tags). Selected state uses a tick and weight as well as color. */
 .chips { display: flex; flex-wrap: wrap; gap: 0.5rem; list-style: none; margin: 0; padding: 0; }
 .chip {
   display: inline-flex; align-items: center; gap: 0.375rem;
@@ -216,7 +216,7 @@ details summary { cursor: pointer; min-height: var(--min-target); display: flex;
 /* Actions sit in a row under the text, so titles get the full width and nothing is squeezed to the side. */
 .day-actions { grid-column: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 .day-actions .button { min-height: var(--min-target); padding: 0.25rem 0.5rem; }
-/* Soft pills rather than underlined links: friendlier, still clearly buttons (shape + label, not colour alone). */
+/* Soft pills rather than underlined links: friendlier, still clearly buttons (shape + label, not color alone). */
 .day-actions .button.quiet {
   background: var(--accent-soft); border: 2px solid transparent; color: var(--accent);
   text-decoration: none; padding: 0.25rem 1rem; font-size: 0.9375rem;
@@ -257,12 +257,12 @@ select { font: inherit; color: var(--fg); background: var(--surface); min-height
 .spot-cell.on span::before { content: '✓ '; content: '✓ ' / ''; }
 .findme {
   position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; align-items: center;
-  justify-content: safe center; /* centred, but never cut off at the top when it's taller than the screen */
+  justify-content: safe center; /* centered, but never cut off at the top when it's taller than the screen */
   overflow-y: auto; /* 200% text or landscape: scroll rather than clip (WCAG 1.4.4, 1.4.10) */
   gap: 0.75rem; padding: 1.5rem; text-align: center;
   margin: 0 !important; /* it sits inside stacked sections; never take their spacing */
 }
-/* The ring takes the card's own text colour: always at least 5.2:1 against the card, whatever its colour. */
+/* The ring takes the card's own text color: always at least 5.2:1 against the card, whatever its color. */
 .findme :focus-visible { outline-color: var(--findme-fg, currentColor); }
 .findme-lead { font-size: 1.125rem; margin: 0; padding: 0 3.25rem; } /* clear of the corner close button */
 .findme .shape-graphic { width: min(70vw, 48vh); height: auto; }
@@ -349,7 +349,7 @@ input[type='date'] { display: block; min-width: 0; max-width: 100%; -webkit-appe
 /* Room between the last energy option and Done. */
 .energy .actions { margin-top: 0.75rem; }
 
-/* Past rows: quieter (muted text, no fill) and labelled "Ended" in words, so it isn't colour alone. */
+/* Past rows: quieter (muted text, no fill) and labeled "Ended" in words, so it isn't color alone. */
 .day-row.is-past { background: transparent; border-style: dashed; }
 .day-row.is-past .day-time, .day-row.is-past .day-title, .day-row.is-past .day-glyph { color: var(--muted); }
 /* An invite you just sent: marked (with "Just added" in words) until it's been seen. */
@@ -415,11 +415,6 @@ html[data-input='pointer'] button:focus-visible { outline: none; }
 .doodle-prompt-line { text-transform: none; letter-spacing: 0; }
 .doodle-look { margin: 0; display: inline-flex; align-items: center; gap: 0.5rem; font-weight: 700; }
 .doodle-look .doodle-graphic { width: 2.5rem; height: 2.5rem; }
-.handwritten { font-family: 'Bradley Hand', 'Segoe Print', 'Chalkboard SE', 'Marker Felt', cursive; }
-.doodle-waiting { margin: 2rem 0; font-size: clamp(2rem, 10vw, 3.5rem); line-height: 1.1; }
-.doodle-waiting span { display: inline-block; animation: write-in 1.6s steps(24, end) both; clip-path: inset(0 100% 0 0); }
-@keyframes write-in { to { clip-path: inset(0 0 0 0); } }
 @media (prefers-reduced-motion: reduce) {
-  .doodle-waiting span { animation: none; clip-path: none; }
   .doodle-graphic.erasing path { transition: none; }
 }

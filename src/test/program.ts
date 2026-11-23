@@ -1,14 +1,14 @@
-// A tiny programme for tests only (the app itself only ever uses the real feed).
-import type { Programme, ProgrammeSession } from '../programme/types';
+// A tiny program for tests only (the app itself only ever uses the real feed).
+import type { Program, ProgramSession } from '../program/types';
 
-export function testProgramme(anchor = new Date(2027, 3, 12).getTime()): Programme {
+export function testProgram(anchor = new Date(2027, 3, 12).getTime()): Program {
   const at = (day: number, h: number, m = 0) => {
     const d = new Date(anchor);
     d.setDate(d.getDate() + day);
     d.setHours(h, m, 0, 0);
     return d.getTime();
   };
-  const s = (id: string, day: number, h: number, topics: string[], title = id): ProgrammeSession => ({
+  const s = (id: string, day: number, h: number, topics: string[], title = id): ProgramSession => ({
     id,
     title,
     start: at(day, h),
@@ -18,7 +18,7 @@ export function testProgramme(anchor = new Date(2027, 3, 12).getTime()): Program
     topics,
   });
   return {
-    name: 'Test programme',
+    name: 'Test program',
     sessions: [
       s('t-1', 0, 10, ['haptics', 'accessibility'], 'Touch and access'),
       s('t-2', 0, 14, ['vr'], 'Virtual rooms'),

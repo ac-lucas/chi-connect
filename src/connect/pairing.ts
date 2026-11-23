@@ -15,7 +15,7 @@ const P256 = { name: 'ECDH', namedCurve: 'P-256' } as const;
 export const PUBLIC_KEY_CHARS = 87;
 const PUBLIC_KEY = /^[A-Za-z0-9_-]{87}$/;
 
-export const MATCH_COLOURS = ['Blue', 'Green', 'Orange', 'Purple', 'Red', 'Yellow', 'Teal', 'Pink'] as const;
+export const MATCH_COLORS = ['Blue', 'Green', 'Orange', 'Purple', 'Red', 'Yellow', 'Teal', 'Pink'] as const;
 export const MATCH_SHAPES = [
   { name: 'Triangle', glyph: '▲' },
   { name: 'Circle', glyph: '●' },
@@ -28,7 +28,7 @@ export const MATCH_SHAPES = [
 ] as const;
 
 export interface MatchWord {
-  colour: (typeof MATCH_COLOURS)[number];
+  color: (typeof MATCH_COLORS)[number];
   shape: (typeof MATCH_SHAPES)[number]['name'];
   glyph: string;
   /** For display and screen readers, for example "Blue Triangle". */
@@ -101,9 +101,9 @@ export function matchSeed(mine: PairSide, theirs: PairSide): string {
 
 export async function matchWord(mine: PairSide, theirs: PairSide): Promise<MatchWord> {
   const h = await sha256(`pebble-match-v2:${sorted(mine, theirs)}`);
-  const colour = MATCH_COLOURS[h[0]! % MATCH_COLOURS.length]!;
+  const color = MATCH_COLORS[h[0]! % MATCH_COLORS.length]!;
   const shape = MATCH_SHAPES[h[1]! % MATCH_SHAPES.length]!;
-  return { colour, shape: shape.name, glyph: shape.glyph, text: `${colour} ${shape.name}` };
+  return { color, shape: shape.name, glyph: shape.glyph, text: `${color} ${shape.name}` };
 }
 
 /** The pair's shared secret (base64url). Message keys are derived from it per purpose and mailbox (src/relay/crypto.ts). */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { KNOWN_TAGS } from '../data/tags';
-import { normaliseTagText } from './tags';
+import { normalizeTagText } from './tags';
 import { cleanTags, resolveTag, searchKnownTags, sharedTags } from './tags';
 import { LIMITS } from './text';
 
@@ -11,7 +11,7 @@ describe('resolveTag', () => {
     expect(resolveTag('Data Visualisation')?.key).toBe('visualization');
     expect(resolveTag('a11y')?.label).toBe('Accessibility');
   });
-  it('matches custom tags on normalised text', () => {
+  it('matches custom tags on normalized text', () => {
     const a = resolveTag('Slow-Tech!');
     const b = resolveTag('slow tech');
     expect(a?.key).toBe(b?.key);
@@ -32,7 +32,7 @@ describe('vocabulary', () => {
     const seen = new Map<string, string>();
     for (const t of KNOWN_TAGS) {
       for (const n of [t.label, t.id, ...t.aliases]) {
-        const k = normaliseTagText(n);
+        const k = normalizeTagText(n);
         const prev = seen.get(k);
         expect(prev === undefined || prev === t.id, `${k} in ${prev} and ${t.id}`).toBe(true);
         seen.set(k, t.id);

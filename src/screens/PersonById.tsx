@@ -1,7 +1,7 @@
 // Show one person, read live by ID: a just-saved connection appears as soon as it's stored, and one removed
 // elsewhere (another tab) says so instead of showing stale details.
 import type { Tag } from '../model/types';
-import type { Programme } from '../programme/types';
+import type { Program } from '../program/types';
 import type { Transport } from '../relay/transport';
 import { getConnection } from '../storage/db';
 import { useLive } from '../ui/useLive';
@@ -12,7 +12,7 @@ interface Props {
   myTags: Tag[];
   justConnected?: boolean;
   relay: Transport | null;
-  programme: Programme | null;
+  program: Program | null;
   onBack: () => void;
   onRemoved: () => void;
 }

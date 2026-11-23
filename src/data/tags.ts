@@ -1,5 +1,5 @@
 // Starter topic vocabulary with aliases. Placeholder seed: to be checked against the
-// programme's track and keyword data once the feed is wired in.
+// program's track and keyword data once the feed is wired in.
 
 export interface KnownTag {
   id: string;
@@ -31,7 +31,7 @@ export const KNOWN_TAGS: readonly KnownTag[] = [
   { id: 'design-methods', label: 'Design methods', aliases: ['research through design', 'participatory design', 'co design', 'codesign', 'speculative design'] },
   { id: 'ux-research', label: 'UX research', aliases: ['user research', 'usability', 'user studies', 'ux'] },
   { id: 'children', label: 'Children and families', aliases: ['children', 'kids', 'families', 'child computer interaction'] },
-  { id: 'ageing', label: 'Ageing', aliases: ['aging', 'older adults', 'elderly'] },
+  { id: 'aging', label: 'Aging', aliases: ['aging', 'ageing', 'older adults', 'elderly'] },
   { id: 'creativity', label: 'Creativity and art', aliases: ['creativity', 'art', 'creative tools', 'music'] },
   { id: 'automotive', label: 'Automotive and mobility', aliases: ['automotive', 'cars', 'autonomous vehicles', 'mobility'] },
   { id: 'robots', label: 'Robots', aliases: ['robotics', 'hri', 'human robot interaction'] },

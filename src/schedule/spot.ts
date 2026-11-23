@@ -2,7 +2,7 @@
 import type { MeetingRow, MeetingSide, MeetingSpot } from '../model/types';
 
 export const ROWS: MeetingRow[] = ['front', 'middle', 'back'];
-export const SIDES: MeetingSide[] = ['left', 'centre', 'right'];
+export const SIDES: MeetingSide[] = ['left', 'center', 'right'];
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -10,10 +10,9 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 export function describeSpot(s: MeetingSpot | undefined): string {
   if (!s) return '';
   const parts: string[] = [];
-  // 'centre' is the stored and sent value (kept for compatibility); people read the US spelling.
-  if (s.row && s.side) parts.push(s.side === 'centre' ? `${cap(s.row)} center` : `${cap(s.row)} ${s.side}`);
+  if (s.row && s.side) parts.push(`${cap(s.row)} ${s.side}`);
   else if (s.row) parts.push(`${cap(s.row)}`);
-  else if (s.side) parts.push(s.side === 'centre' ? 'Center' : `${cap(s.side)} side`);
+  else if (s.side) parts.push(s.side === 'center' ? 'Center' : `${cap(s.side)} side`);
   if (s.byDoor) parts.push(parts.length ? 'by the door' : 'By the door');
   if (s.aisleSeat) parts.push(parts.length ? 'aisle seat' : 'Aisle seat');
   return parts.join(', ');

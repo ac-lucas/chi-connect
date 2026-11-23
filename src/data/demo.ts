@@ -57,7 +57,7 @@ export const DEMO_CONNECTIONS: Connection[] = [
 
 /**
  * The demo person who never answers invites, so a tester sees what a "no" looks like from the sender's side:
- * nothing at all (declining tells no one). Labelled Simulated like every other demo reply.
+ * nothing at all (declining tells no one). Labeled Simulated like every other demo reply.
  */
 export const DEMO_NEVER_ANSWERS = 'demo-yuki';
 

@@ -6,8 +6,8 @@ import { RelayError, type Transport } from '../relay/transport';
 import { getSetting, listAllSchedule, removeConnection, updateConnection, getHome } from '../storage/db';
 import { personOpeners } from '../data/icebreakers';
 import { sharedTags } from '../model/tags';
-import type { Programme } from '../programme/types';
-import { dayLabel, timeRange } from '../programme/programme';
+import type { Program } from '../program/types';
+import { dayLabel, timeRange } from '../program/program';
 import { shareSessionsIfChanged } from '../schedule/overlap';
 import { announce } from '../ui/announce';
 import { useScreenHeading } from '../ui/useScreenHeading';
@@ -21,21 +21,21 @@ interface Props {
   myTags: Tag[];
   justConnected?: boolean;
   relay: Transport | null;
-  programme: Programme | null;
+  program: Program | null;
   onBack: () => void;
   onRemoved: () => void;
 }
 
-export function PersonScreen({ connection: c, myTags, justConnected, relay, programme, onBack, onRemoved }: Props) {
+export function PersonScreen({ connection: c, myTags, justConnected, relay, program, onBack, onRemoved }: Props) {
   const heading = useScreenHeading<HTMLHeadingElement>();
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const mySessionIds =
-    useLive(async () => (await listAllSchedule()).filter((s) => s.type === 'session' && s.programmeSessionId).map((s) => s.programmeSessionId!), ['schedule']) ?? [];
+    useLive(async () => (await listAllSchedule()).filter((s) => s.type === 'session' && s.programSessionId).map((s) => s.programSessionId!), ['schedule']) ?? [];
   const theirIds = c.sharedSessionIds;
   const quiet = useLive(async () => !!(await getSetting('quietMode')), ['settings']) ?? false;
-  const both = programme ? programme.sessions.filter((s) => mySessionIds.includes(s.id) && theirIds.includes(s.id)) : [];
+  const both = program ? program.sessions.filter((s) => mySessionIds.includes(s.id) && theirIds.includes(s.id)) : [];
 
   async function toggleSharing(on: boolean) {
     await updateConnection(c.id, { scheduleSharing: on }); // never write the screen's (possibly stale) copy back
@@ -76,7 +76,7 @@ export function PersonScreen({ connection: c, myTags, justConnected, relay, prog
     }
   }
 
-  /** Declining or cancelling just deletes it on this phone. Nothing is sent. */
+  /** Declining or canceling just deletes it on this phone. Nothing is sent. */
   async function dismiss(message: string) {
     try {
       await removeConnection(c.id);

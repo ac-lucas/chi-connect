@@ -1,8 +1,8 @@
-// Shapes for face-to-face connect (F21): a colour, shape, pattern and word that the two people connecting see
+// Shapes for face-to-face connect (F21): a color, shape, pattern and word that the two people connecting see
 // identically, made from both codes. Hold it up, check it matches. Meetups use doodles instead (doodle.ts). The
-// colours are shared with doodle cards: each is checked for contrast with its text colour.
+// colors are shared with doodle cards: each is checked for contrast with its text color.
 
-export const CARD_COLOURS = [
+export const CARD_COLORS = [
   { name: 'Blue', bg: '#1f4fbf', fg: '#ffffff' },
   { name: 'Green', bg: '#1d6b3a', fg: '#ffffff' },
   { name: 'Orange', bg: '#b84a00', fg: '#ffffff' },
@@ -26,7 +26,7 @@ export const SHAPE_PATHS: Record<(typeof CARD_SHAPES)[number], string> = {
 };
 
 export interface ShapeCard {
-  colour: (typeof CARD_COLOURS)[number];
+  color: (typeof CARD_COLORS)[number];
   shape: (typeof CARD_SHAPES)[number];
   pattern: (typeof CARD_PATTERNS)[number];
   /** Spoken and printed name, e.g. "Blue Triangle". */
@@ -38,10 +38,10 @@ export type FindMeCard = ShapeCard;
 /** A card from any seed string both sides share. */
 export async function cardFromSeed(seed: string): Promise<ShapeCard> {
   const h = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(seed)));
-  const colour = CARD_COLOURS[h[0]! % CARD_COLOURS.length]!;
+  const color = CARD_COLORS[h[0]! % CARD_COLORS.length]!;
   const shape = CARD_SHAPES[h[1]! % CARD_SHAPES.length]!;
   const pattern = CARD_PATTERNS[h[2]! % CARD_PATTERNS.length]!;
-  return { colour, shape, pattern, word: `${colour.name} ${shape}` };
+  return { color, shape, pattern, word: `${color.name} ${shape}` };
 }
 
 /** The card for a meetup: everyone invited shares the invite's random ID. */

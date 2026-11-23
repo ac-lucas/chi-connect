@@ -2,7 +2,7 @@
 // says yes holds the same doodle up to find each other. It travels inside the encrypted invite as a few hundred
 // bytes of stroke points. Untrusted on arrival: decodeDoodle checks every byte.
 import { fromBase64Url, toBase64Url } from '../connect/base64url';
-import { CARD_COLOURS } from './findme';
+import { CARD_COLORS } from './findme';
 
 /** A point on a 256 x 256 grid. */
 export type Point = readonly [number, number];
@@ -142,10 +142,10 @@ export function doodleFor(inv: { id: string; doodle?: string }): Doodle {
   return (inv.doodle && decodeDoodle(inv.doodle)) || generateDoodle(inv.id);
 }
 
-/** The card colour for a meetup (the same on every phone), from the colours already checked for contrast. */
-export function doodleColour(inviteId: string): (typeof CARD_COLOURS)[number] {
-  const r = seeded(`pebble-doodle-colour-v1:${inviteId}`);
-  return CARD_COLOURS[Math.floor(r() * CARD_COLOURS.length)]!;
+/** The card color for a meetup (the same on every phone), from the colors already checked for contrast. */
+export function doodleColor(inviteId: string): (typeof CARD_COLORS)[number] {
+  const r = seeded(`pebble-doodle-color-v1:${inviteId}`);
+  return CARD_COLORS[Math.floor(r() * CARD_COLORS.length)]!;
 }
 
 /**
@@ -154,23 +154,21 @@ export function doodleColour(inviteId: string): (typeof CARD_COLOURS)[number] {
  * different prompt (retire it instead).
  */
 export const PROMPTS = {
-  coffee: 'your usual coffee order',
-  breakfast: 'what you had for breakfast',
-  view: 'the view from where you are',
   bag: 'one thing in your bag',
-  journey: 'how you got here today',
   weather: 'your mood as weather',
   snack: 'your go-to snack',
   shoes: 'your shoes',
   home: 'something from home',
   dinner: 'your ideal dinner tonight',
-  plant: 'a plant you could keep alive',
   hobby: 'what you do on a day off',
-  pet: 'a pet you have or want',
-  song: 'the song stuck in your head',
-  talk: 'the best idea you heard today',
-  hand: 'your hand',
+  talent: 'your hidden talent',
+  place: 'a place you love',
 } as const;
+/**
+ * Keys that were used once and removed (Nov 23, 2026). Never give them to a new prompt: an invite sent with one
+ * would show the wrong prompt. An invite carrying one now just has no prompt ("anything at all").
+ */
+export const RETIRED_PROMPT_KEYS = ['coffee', 'breakfast', 'view', 'journey', 'plant', 'pet', 'song', 'talk', 'hand'] as const;
 export type PromptKey = keyof typeof PROMPTS;
 export const PROMPT_KEYS = Object.keys(PROMPTS) as PromptKey[];
 export const isPromptKey = (v: unknown): v is PromptKey => typeof v === 'string' && Object.prototype.hasOwnProperty.call(PROMPTS, v);

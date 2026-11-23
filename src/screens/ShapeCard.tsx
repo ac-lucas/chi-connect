@@ -3,14 +3,14 @@ import { createPortal } from 'preact/compat';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { SHAPE_PATHS, type ShapeCard } from '../schedule/findme';
 
-function Pattern({ kind, colour, id }: { kind: ShapeCard['pattern']; colour: string; id: string }) {
+function Pattern({ kind, color, id }: { kind: ShapeCard['pattern']; color: string; id: string }) {
   return (
     <defs>
       <pattern id={id} width="20" height="20" patternUnits="userSpaceOnUse">
-        {kind === 'Stripes' && <path d="M0 20 L20 0" stroke={colour} stroke-width="5" />}
-        {kind === 'Dots' && <circle cx="10" cy="10" r="4" fill={colour} />}
-        {kind === 'Waves' && <path d="M0 10 Q5 4 10 10 T20 10" fill="none" stroke={colour} stroke-width="3" />}
-        {kind === 'Checks' && <path d="M0 0 H10 V10 H0 Z M10 10 H20 V20 H10 Z" fill={colour} />}
+        {kind === 'Stripes' && <path d="M0 20 L20 0" stroke={color} stroke-width="5" />}
+        {kind === 'Dots' && <circle cx="10" cy="10" r="4" fill={color} />}
+        {kind === 'Waves' && <path d="M0 10 Q5 4 10 10 T20 10" fill="none" stroke={color} stroke-width="3" />}
+        {kind === 'Checks' && <path d="M0 0 H10 V10 H0 Z M10 10 H20 V20 H10 Z" fill={color} />}
       </pattern>
     </defs>
   );
@@ -18,11 +18,11 @@ function Pattern({ kind, colour, id }: { kind: ShapeCard['pattern']; colour: str
 
 /** The shape itself: filled, patterned and outlined so it reads from across a room. */
 export function ShapeGraphic({ card, size, label, idSuffix }: { card: ShapeCard; size?: string; label?: string; idSuffix: string }) {
-  const { bg, fg } = card.colour;
+  const { bg, fg } = card.color;
   const pid = `pat-${idSuffix}`;
   return (
     <svg class="shape-graphic" viewBox="-6 -6 212 212" style={size ? { width: size, height: size } : undefined} role={label ? 'img' : undefined} aria-label={label} aria-hidden={label ? undefined : 'true'}>
-      <Pattern kind={card.pattern} colour={bg} id={pid} />
+      <Pattern kind={card.pattern} color={bg} id={pid} />
       <path d={SHAPE_PATHS[card.shape]} fill={fg} stroke={fg} stroke-width="10" stroke-linejoin="round" />
       <path d={SHAPE_PATHS[card.shape]} fill={`url(#${pid})`} />
     </svg>
@@ -30,12 +30,12 @@ export function ShapeGraphic({ card, size, label, idSuffix }: { card: ShapeCard;
 }
 
 /**
- * Full-screen "Your shape" to hold up. A word, a shape and a pattern, never colour alone. A dialog: focus moves in,
+ * Full-screen "Your shape" to hold up. A word, a shape and a pattern, never color alone. A dialog: focus moves in,
  * Escape or Done closes, focus goes back. Keeps the screen awake while it's up, where the browser allows it.
  */
 export function ShapeCardView({ card, context, onClose }: { card: ShapeCard; context?: string; onClose: () => void }) {
   return (
-    <HoldUpDialog bg={card.colour.bg} fg={card.colour.fg} lead="Hold this up. Look for the same shape." context={context} onClose={onClose}>
+    <HoldUpDialog bg={card.color.bg} fg={card.color.fg} lead="Hold this up. Look for the same shape." context={context} onClose={onClose}>
       <ShapeGraphic card={card} label={`${card.word} with ${card.pattern.toLowerCase()}`} idSuffix="full" />
       <h2 id="findme-word" class="findme-word">
         {card.word}

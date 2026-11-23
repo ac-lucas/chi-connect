@@ -78,7 +78,7 @@ export async function sendInvite(
     place: n.place,
     meetingSpot: n.spot,
     note: n.note,
-    programmeSessionId: n.sessionId,
+    programSessionId: n.sessionId,
     sessionTitle: n.sessionTitle,
     prompt: n.prompt,
     doodle: n.doodle,
@@ -105,7 +105,7 @@ export async function addPeopleToInvite(
   now = Date.now(),
 ): Promise<{ invite: Invite; failed: Connection[] } | null> {
   const inv = await getInvite(inviteId);
-  if (!inv || !inv.outgoing || inv.status === 'cancelled') return null;
+  if (!inv || !inv.outgoing || inv.status === 'canceled') return null;
   const fresh = people.filter((p) => !inv.recipientIds.includes(p.id));
   const invite: Invite = { ...inv, recipientIds: [...inv.recipientIds, ...fresh.map((p) => p.id)] };
   await putInvite(invite);
@@ -131,7 +131,7 @@ export async function deliverInvite(
     place: invite.place,
     spot: invite.meetingSpot,
     note: invite.note,
-    sessionId: invite.programmeSessionId,
+    sessionId: invite.programSessionId,
     sessionTitle: invite.sessionTitle,
     prompt: invite.prompt,
     doodle: invite.doodle,
@@ -140,7 +140,7 @@ export async function deliverInvite(
   for (const r of recipients) {
     if (r.demo) {
       // Simulated: demo people "say yes" after a short pause, except one who never answers (what a decline looks
-      // like to the sender). Labelled as simulated in the UI.
+      // like to the sender). Labeled as simulated in the UI.
       if (r.id === DEMO_NEVER_ANSWERS) {
         const inv = await getInvite(invite.id);
         if (inv && !inv.simulated) await putInvite({ ...inv, simulated: true });
@@ -161,7 +161,7 @@ export async function deliverInvite(
 
 async function simulatedYes(inviteId: string, who: Connection) {
   const inv = await getInvite(inviteId);
-  if (!inv || inv.status === 'cancelled' || inv.acceptedIds.includes(who.id)) return;
+  if (!inv || inv.status === 'canceled' || inv.acceptedIds.includes(who.id)) return;
   // Demo people "draw" a generated doodle.
   const guestDoodles = { ...inv.guestDoodles, [who.id]: encodeDoodle(generateDoodle(`${inviteId}:${who.id}`)) };
   await putInvite({ ...inv, acceptedIds: [...inv.acceptedIds, who.id], guestDoodles, simulated: true }); // open screens update by themselves
@@ -177,7 +177,7 @@ function scheduleFor(i: Invite, title?: string): ScheduleItem {
     place: i.place,
     start: i.start,
     end: i.end,
-    programmeSessionId: i.programmeSessionId,
+    programSessionId: i.programSessionId,
   };
 }
 
@@ -201,7 +201,7 @@ export async function handleInviteMessage(c: Connection, msg: Exclude<PairMessag
       place: w.place,
       meetingSpot: w.spot,
       note: w.note,
-      programmeSessionId: w.sessionId,
+      programSessionId: w.sessionId,
       sessionTitle: w.sessionTitle,
       prompt: w.prompt,
       doodle: w.doodle,
@@ -225,7 +225,7 @@ export async function handleInviteMessage(c: Connection, msg: Exclude<PairMessag
   }
   // Cancel only counts from the person who sent the invite (and a declined tombstone stays as it is).
   if (inv.outgoing || inv.fromConnectionId !== c.id || inv.status === 'declined') return null;
-  await putInvite({ ...inv, status: 'cancelled' });
+  await putInvite({ ...inv, status: 'canceled' });
   await deleteScheduleItem(`inv-${inv.id}`);
   return 'changed';
 }
@@ -278,7 +278,7 @@ export async function cancelInvite(relay: Transport | null, inv: Invite): Promis
       missed += 1;
     }
   }
-  await putInvite({ ...inv, status: 'cancelled' });
+  await putInvite({ ...inv, status: 'canceled' });
   await deleteScheduleItem(`inv-${inv.id}`); // its day entry always has this key
   return { told, missed };
 }
@@ -296,7 +296,7 @@ export async function simulateIncoming(from: Connection, n: NewInvite, now = Dat
     place: n.place,
     meetingSpot: n.spot,
     note: n.note,
-    programmeSessionId: n.sessionId,
+    programSessionId: n.sessionId,
     sessionTitle: n.sessionTitle,
     // The demo person "drew" theirs: a generated doodle.
     prompt: n.prompt ?? pickPrompt(),
@@ -315,7 +315,7 @@ export async function simulateIncoming(from: Connection, n: NewInvite, now = Dat
 
 /**
  * Tidy invites, then return the pending ones to show now.
- *  - Unanswered, declined or cancelled incoming invites go for good once their time has come.
+ *  - Unanswered, declined or canceled incoming invites go for good once their time has come.
  *  - Once a meetup has ended, its meeting spot, note and doodles are deleted (they belong to one meetup only).
  *    What's left (who, when, where) stays for your own day history and recap.
  */

@@ -171,7 +171,7 @@ export type PairMessage =
   /** Yes, with the guest's doodle (the sender holds it up to be found). */
   | { t: 'yes'; v: 1; id: string; doodle?: string }
   | { t: 'cancel'; v: 1; id: string }
-  /** F14: the programme session IDs someone saved, sent only if they chose to share with this person. Empty = stopped sharing. */
+  /** F14: the program session IDs someone saved, sent only if they chose to share with this person. Empty = stopped sharing. */
   | { t: 'sessions'; v: 1; ids: string[] };
 
 /** Send a message to a connection's mailbox, sealed with the pair's key. */

@@ -1,7 +1,7 @@
 // Auto-breaks (F11): fill the gaps between what's in someone's day with a lunch break and breathers,
 // shaped by today's energy (F22), and give a friendly heads-up on a packed day. Pure: no storage, no clock.
 import type { EnergyLevel } from '../model/types';
-import { atMinutes } from '../programme/programme';
+import { atMinutes } from '../program/program';
 import { ENERGY } from './energy';
 
 export interface Busy {

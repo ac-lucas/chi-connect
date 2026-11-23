@@ -1,6 +1,6 @@
 // Protect some time (F22): a Recharge block, the only time invites wait. Opening it moves focus in; the caller returns focus on close.
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { atMinutes, clockTime as clock } from '../../programme/programme';
+import { atMinutes, clockTime as clock } from '../../program/program';
 import { PROTECT_LABELS } from './rows';
 
 export function ProtectForm({

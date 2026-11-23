@@ -73,7 +73,7 @@ export interface Connection {
   /** What I last sent them (a hash of my session list) and when, so changes are sent once. */
   lastSharedHash?: string;
   lastSharedAt?: number;
-  /** Demo connections are labelled as demo everywhere they appear. */
+  /** Demo connections are labeled as demo everywhere they appear. */
   demo: boolean;
 }
 
@@ -98,7 +98,7 @@ export type ProtectedKind = 'focus' | 'recharge' | 'off';
 export type BreakKind = 'meal' | 'rest' | 'restroom';
 
 export type MeetingRow = 'front' | 'middle' | 'back';
-export type MeetingSide = 'left' | 'centre' | 'right';
+export type MeetingSide = 'left' | 'center' | 'right';
 
 /** A coarse spot picked by hand from a grid of room areas. Never device location. */
 export interface MeetingSpot {
@@ -118,13 +118,13 @@ export interface ScheduleItem {
   title: string;
   place?: string;
   source: 'user' | 'auto' | 'invite';
-  programmeSessionId?: string;
+  programSessionId?: string;
   breakKind?: BreakKind;
   protectedKind?: ProtectedKind;
   inviteId?: string;
   /** Added from a wildcard suggestion (F15), for the recap. */
   fromWildcard?: boolean;
-  /** Part of the ready-made sample day (src/schedule/starter.ts). Labelled Sample wherever it shows. */
+  /** Part of the ready-made sample day (src/schedule/starter.ts). Labeled Sample wherever it shows. */
   starter?: boolean;
   /** Came from an imported calendar file. */
   imported?: boolean;
@@ -150,7 +150,7 @@ export interface Invite {
   start: number;
   end: number;
   place?: string;
-  programmeSessionId?: string;
+  programSessionId?: string;
   sessionTitle?: string;
   meetingSpot?: MeetingSpot;
   note?: string;
@@ -171,16 +171,16 @@ export interface Invite {
   /** Only filled in on the sender's side, and only with people who said yes. */
   acceptedIds: string[];
   /** 'declined' is a local tombstone (no details kept), so a repeated delivery can't bring the invite back. */
-  status: 'pending' | 'accepted' | 'cancelled' | 'declined';
-  /** Made up on this phone to show how invites work (demo people). Labelled "Simulated". */
+  status: 'pending' | 'accepted' | 'canceled' | 'declined';
+  /** Made up on this phone to show how invites work (demo people). Labeled "Simulated". */
   simulated?: boolean;
 }
 
 export interface CatchUpItem {
-  programmeSessionId: string;
+  programSessionId: string;
   title: string;
   start: number;
-  /** Paper links from the programme (DOI / ACM DL). */
+  /** Paper links from the program (DOI / ACM DL). */
   papers?: { title: string; url: string }[];
   reason: 'clash' | 'saved';
   addedAt: number;

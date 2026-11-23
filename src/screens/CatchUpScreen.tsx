@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { CatchUpItem } from '../model/types';
-import { dayLabel } from '../programme/programme';
+import { dayLabel } from '../program/program';
 import { deleteCatchUp, listCatchUp } from '../storage/db';
 import { announce } from '../ui/announce';
 import { keepingFocus } from '../ui/focus';
@@ -30,7 +30,7 @@ export function CatchUpScreen({ onBack }: { onBack: () => void }) {
       ) : (
         <ul class="sessions">
           {list.map((c) => (
-            <li key={c.programmeSessionId} class="card stack">
+            <li key={c.programSessionId} class="card stack">
               <div>
                 <h3 class="session-title" dir="auto">{c.title}</h3>
                 <p class="muted">{dayLabel(c.start, 'long')}</p>
@@ -54,7 +54,7 @@ export function CatchUpScreen({ onBack }: { onBack: () => void }) {
                   class="button quiet"
                   aria-label={`Remove ${c.title} from Catch up later`}
                   onClick={() => keepingFocus(async () => {
-                    await deleteCatchUp(c.programmeSessionId);
+                    await deleteCatchUp(c.programSessionId);
                     announce('Removed.');
                   })}
                 >

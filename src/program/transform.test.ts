@@ -19,7 +19,7 @@ const feed = {
     { id: 22, name: 'Plenary and Keynote' },
   ],
   contents: [
-    { id: 30, title: 'Haptic maps for blind travellers in VR', addons: { doi: { url: 'https://doi.org/10.1145/1' } } },
+    { id: 30, title: 'Haptic maps for blind travelers in VR', addons: { doi: { url: 'https://doi.org/10.1145/1' } } },
     { id: 33, title: 'Haptic gloves in VR', addons: {} },
     { id: 31, title: 'Sneaky link', addons: { doi: { url: 'javascript:alert(1)' } } },
     { id: 32, title: 'Elsewhere', addons: { doi: { url: 'https://evil.example/x' } } },
@@ -54,7 +54,7 @@ describe('transformFeed', () => {
     expect(s.title).toBe('Touch & Feel');
     expect(s.room).toBe('P1 - Room 111');
     expect(s.format).toBe('papers');
-    expect(s.papers).toEqual([{ title: 'Haptic maps for blind travellers in VR', url: 'https://doi.org/10.1145/1' }]);
+    expect(s.papers).toEqual([{ title: 'Haptic maps for blind travelers in VR', url: 'https://doi.org/10.1145/1' }]);
     expect(s.topics).toEqual(expect.arrayContaining(['haptics', 'vr']));
     const odd = p.sessions.find((x) => x.id === 's106')!;
     expect(odd.title).toBe('<img src=x onerror=alert(1)>'); // kept as plain text, rendered as text
@@ -62,7 +62,7 @@ describe('transformFeed', () => {
     expect(odd.format).toBe('keynote');
   });
 
-  it('refuses things that are not a programme', () => {
+  it('refuses things that are not a program', () => {
     expect(() => transformFeed(null, 'x', 1)).toThrow();
     expect(() => transformFeed({ sessions: [] }, 'x', 1)).toThrow();
     expect(() => transformFeed({ schemeVersion: 7, sessions: 'no' }, 'x', 1)).toThrow();

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { Connection, Invite, ScheduleItem } from '../model/types';
-import { clockTime, dayLabel, overlaps, startOfDay, timeRange, timeRangeSpoken } from '../programme/programme';
+import { clockTime, dayLabel, overlaps, startOfDay, timeRange, timeRangeSpoken } from '../program/program';
 import { describeSpot } from '../schedule/spot';
 import { acceptInvite, declineInvite, KIND_INFO, simulateIncoming } from '../schedule/invites';
 import type { Transport } from '../relay/transport';
@@ -8,7 +8,7 @@ import type { PlannedBreak } from '../schedule/breaks';
 import { announce } from '../ui/announce';
 import { keepingFocus } from '../ui/focus';
 import { DoodleGraphic, DoodlePad, promptText } from './DoodleCard';
-import { decodeDoodle, doodleColour, generateDoodle } from '../schedule/doodle';
+import { decodeDoodle, doodleColor, generateDoodle } from '../schedule/doodle';
 
 interface Props {
   invites: Invite[];
@@ -93,7 +93,7 @@ export function InvitesPanel({ invites, connections, items, relay, heldUntil, on
             {spot && <p>Spot: {spot}</p>}
             {i.note && <p class="invite-note">“{i.note}”</p>}
             <div class="doodle-invite">
-              <span class="doodle-swatch" style={{ background: doodleColour(i.id).bg, color: doodleColour(i.id).fg }}>
+              <span class="doodle-swatch" style={{ background: doodleColor(i.id).bg, color: doodleColor(i.id).fg }}>
                 <DoodleGraphic doodle={(i.doodle && decodeDoodle(i.doodle)) || generateDoodle(i.id)} size="4.5rem" label={`${i.senderName}’s drawing`} />
               </span>
               <p>
