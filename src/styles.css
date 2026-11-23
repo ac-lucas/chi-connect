@@ -271,7 +271,7 @@ select { font: inherit; color: var(--fg); background: var(--surface); min-height
 .findme-pattern { margin: 0; font-size: 1.25rem; text-transform: uppercase; letter-spacing: 0.1em; }
 .findme-done { font: inherit; font-weight: 800; border: 0; border-radius: 999px; padding: 0.75rem 2.5rem; min-height: var(--min-target); cursor: pointer; }
 .findme-close {
-  position: absolute; top: max(0.75rem, env(safe-area-inset-top)); right: 0.75rem;
+  position: absolute; top: max(0.75rem, env(safe-area-inset-top)); right: max(0.75rem, env(safe-area-inset-right));
   width: 3rem; height: 3rem; border-radius: 999px; border: 2px solid; background: transparent;
   font: inherit; font-size: 1.375rem; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center;
 }
@@ -417,4 +417,36 @@ html[data-input='pointer'] button:focus-visible { outline: none; }
 .doodle-look .doodle-graphic { width: 2.5rem; height: 2.5rem; }
 @media (prefers-reduced-motion: reduce) {
   .doodle-graphic.erasing path { transition: none; }
+}
+
+/* Hold-up card on a wide screen (a phone turned sideways or on a mount, a tablet, a laptop). Stacked, the drawing
+   or shape would be capped at half the screen height; here it sits on the left at nearly full height and the words
+   go on the right. It stays put while the words scroll (200% text). DOM order, and so reading and focus order, is
+   unchanged: only the graphic moves. */
+@media (orientation: landscape) {
+  .findme {
+    --art: min(48vw, calc(100vh - 3rem));
+    padding-left: calc(max(1.5rem, env(safe-area-inset-left)) + var(--art) + 1.5rem);
+    padding-right: calc(max(0.75rem, env(safe-area-inset-right)) + 3.75rem); /* the close button's lane */
+  }
+  .findme-lead { padding: 0; }
+  .findme-word { font-size: clamp(1.75rem, 5vw, 3rem); }
+  .findme > .shape-graphic,
+  .findme .doodle-replay > .doodle-graphic {
+    position: fixed; left: max(1.5rem, env(safe-area-inset-left)); top: 0; bottom: 0; margin: auto 0;
+    width: var(--art); height: var(--art);
+  }
+}
+/* A phone on its side: little height, so tighter spacing to keep the words on one screen where possible. */
+@media (orientation: landscape) and (max-height: 32rem) {
+  .findme { gap: 0.5rem; padding-top: max(0.75rem, env(safe-area-inset-top)); padding-bottom: max(0.75rem, env(safe-area-inset-bottom)); }
+  .findme-lead, .findme-context { font-size: 1rem; }
+  .findme-word, .doodle-title { font-size: clamp(1.5rem, 7vh, 2.25rem); }
+  .findme-brand { padding-top: 0; }
+  .doodle-replay { gap: 0.375rem; }
+}
+@supports (height: 100dvh) {
+  @media (orientation: landscape) {
+    .findme { --art: min(48vw, calc(100dvh - 3rem)); } /* the visible height, toolbars or not */
+  }
 }
