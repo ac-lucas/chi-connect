@@ -1,10 +1,11 @@
 import 'fake-indexeddb/auto';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { randomId } from '../model/ids';
 import type { Connection } from '../model/types';
 import { parseWireInvite } from '../relay/invites';
 import { getInvite, listAllSchedule, putConnection, resetDatabaseForTests } from '../storage/db';
 import { findMeCard } from './findme';
+import { decodeDoodle, encodeDoodle, generateDoodle } from './doodle';
 import { acceptInvite, addPeopleToInvite, cancelInvite, declineInvite, handleInviteMessage, pendingIncoming, sendInvite } from './invites';
 import { describeSpot } from './spot';
 
@@ -120,6 +121,58 @@ describe('sending and answering', () => {
     expect((await listAllSchedule()).some((s) => s.inviteId === invite.id)).toBe(true);
     await cancelInvite(null, (await getInvite(invite.id))!);
     expect((await listAllSchedule()).some((s) => s.inviteId === invite.id)).toBe(false);
+  });
+
+  it('a yes carries the guest’s doodle; saying yes keeps my own; both go when the meetup ends', async () => {
+    const sam = conn('Sam');
+    await putConnection(sam);
+    const { invite } = await sendInvite(null, 'Ana', [sam], { kind: 'meal', start: Date.now() + H, end: Date.now() + 2 * H, prompt: 'coffee', doodle: encodeDoodle(generateDoodle('ana')) }, () => {});
+    const theirs = encodeDoodle(generateDoodle('sam'));
+    await handleInviteMessage(sam, { t: 'yes', v: 1, id: invite.id, doodle: theirs }, Date.now());
+    const got = await getInvite(invite.id);
+    expect(got?.guestDoodles?.[sam.id]).toBe(theirs);
+    expect(got?.prompt).toBe('coffee');
+
+    // The other side: an incoming invite I say yes to (simulated, so no relay needed).
+    const mina = conn('Mina', true);
+    await putConnection(mina);
+    const mine = encodeDoodle(generateDoodle('me'));
+    const w = wire({ start: Date.now() + 60_000, end: Date.now() + 120_000, doodle: encodeDoodle(generateDoodle('mina')), prompt: 'shoes' });
+    await handleInviteMessage(mina, { t: 'invite', v: 1, invite: parseWireInvite(w)! }, Date.now());
+    await acceptInvite(null, (await getInvite(w.id as string))!, mine);
+    expect((await getInvite(w.id as string))?.myDoodle).toBe(mine);
+
+    await pendingIncoming(Date.now() + 3 * H); // after both meetups end
+    for (const id of [invite.id, w.id as string]) {
+      const after = await getInvite(id);
+      expect(after?.doodle).toBeUndefined();
+      expect(after?.myDoodle).toBeUndefined();
+      expect(after?.guestDoodles).toBeUndefined();
+    }
+  });
+
+  it('a demo person who says yes “draws” one', async () => {
+    const mina = conn('Mina', true);
+    await putConnection(mina);
+    // Catch only the simulated reply's delay (the database needs real timers), then run it straight away.
+    const real = globalThis.setTimeout;
+    const later: (() => void)[] = [];
+    const spy = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void, ms?: number) => {
+      if ((ms ?? 0) >= 2000) {
+        later.push(fn);
+        return 0;
+      }
+      return real(fn, ms);
+    }) as typeof setTimeout);
+    try {
+      const { invite } = await sendInvite(null, 'Ana', [mina], { kind: 'meal', start: Date.now() + H, end: Date.now() + 2 * H }, () => {});
+      spy.mockRestore();
+      later.forEach((f) => f());
+      await vi.waitFor(async () => expect((await getInvite(invite.id))?.acceptedIds).toEqual([mina.id]));
+      expect(decodeDoodle((await getInvite(invite.id))?.guestDoodles?.[mina.id])).not.toBeNull();
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('invites more people to the same meetup, adding only new ones', async () => {

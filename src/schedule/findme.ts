@@ -1,6 +1,6 @@
-// "Your shape" (F27): a colour, shape, pattern and word that everyone in the same meetup (or the two people
-// connecting face to face) see identically, made from something only they share. Hold it up, look for the match.
-// Nothing extra is stored or sent.
+// Shapes for face-to-face connect (F21): a colour, shape, pattern and word that the two people connecting see
+// identically, made from both codes. Hold it up, check it matches. Meetups use doodles instead (doodle.ts). The
+// colours are shared with doodle cards: each is checked for contrast with its text colour.
 
 export const CARD_COLOURS = [
   { name: 'Blue', bg: '#1f4fbf', fg: '#ffffff' },

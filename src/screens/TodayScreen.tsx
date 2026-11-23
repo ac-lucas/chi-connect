@@ -16,7 +16,7 @@ import { useScreenHeading } from '../ui/useScreenHeading';
 import type { InviteDraft } from './InviteScreen';
 import { InvitesPanel, SimulateInvite } from './InvitesPanel';
 import { ProgrammeNote } from './ProgrammeNote';
-import { MeetupShapeView, ShapeBadge } from './ShapeCard';
+import { DoodleBadge, MeetupDoodleView, myDoodleOf } from './DoodleCard';
 import { SuggestionsPanel } from './SuggestionsPanel';
 import { DayRow } from './today/DayRow';
 import { EnergyPicker } from './today/EnergyPicker';
@@ -63,6 +63,8 @@ export function TodayScreen({ name, programme, relay, myTopics, onAddSessions, o
     setTimeout(() => protectBtn.current?.focus(), 0); // back to the button that opened it
   };
   const [shapeFor, setShapeFor] = useState<{ id: string; context: string } | null>(null);
+  /** Read live, so a yes that arrives while it's up joins the drawings. */
+  const shapeInvite = shapeFor ? invites.find((i) => i.id === shapeFor.id) : undefined;
 
   const { level, setToday } = energyToday(energy, now);
   // Energy is about today. Other days are planned at the default pace, and get no wildcard.
@@ -83,7 +85,7 @@ export function TodayScreen({ name, programme, relay, myTopics, onAddSessions, o
   const holding = items.find((i) => holdsInvites(i, now));
   const nextBreak = day === today ? (plan.breaks.find((b) => b.start > now) ?? null) : null;
 
-  // From 10 minutes before a confirmed meetup until it ends: put "Display your shape" front and centre.
+  // From 10 minutes before a confirmed meetup until it ends: put "Hold up their drawing" front and centre.
   const meetupNow =
     day === today
       ? rows
@@ -100,7 +102,7 @@ export function TodayScreen({ name, programme, relay, myTopics, onAddSessions, o
   function inviteFromSession(s: ScheduleItem, preselect?: string[]) {
     onInvite({ kinds: ['sit-together', 'arrive-together', 'walk-over'], start: s.start, end: s.end, sessionId: s.programmeSessionId, sessionTitle: s.title, room: s.place, preselect });
   }
-  // On a session with sitting together merged in: your own meetup gets more people (same invite, same shape);
+  // On a session with sitting together merged in: your own meetup gets more people (same invite, same doodles);
   // one you were invited to can't be changed by you, so that starts a new invite as usual.
   function inviteMore(s: ScheduleItem, inv: Invite) {
     if (!inv.outgoing) return inviteFromSession(s);
@@ -121,7 +123,7 @@ export function TodayScreen({ name, programme, relay, myTopics, onAddSessions, o
   }
   async function hideShapePrompt(inviteId: string) {
     await dismiss(`shapeprompt:${inviteId}`);
-    announce('Hidden. Your shape is still on the meetup in your day.');
+    announce('Hidden. The drawings are still on the meetup in your day.');
     // The card is gone: keep keyboard focus near, on that meetup's own button.
     setTimeout(() => document.querySelector<HTMLElement>(`[data-shape-for="${inviteId}"]`)?.focus(), 50);
   }
@@ -174,10 +176,10 @@ export function TodayScreen({ name, programme, relay, myTopics, onAddSessions, o
           </h3>
           <p>{meetupContext(meetupNow.item, meetupNow.invite)}</p>
           <p class="shape-line">
-            You’re all looking for <ShapeBadge seedKey={meetupNow.invite.id} />
+            <DoodleBadge inviteId={meetupNow.invite.id} doodle={myDoodleOf(meetupNow.invite)} text="Look for your drawing" />
           </p>
           <button type="button" class="button big" onClick={() => setShapeFor({ id: meetupNow.invite!.id, context: meetupContext(meetupNow.item, meetupNow.invite!) })}>
-            Display your shape to find each other
+            Hold up their drawing to find each other
           </button>
           <div class="actions">
             <button type="button" class="button quiet" onClick={() => void hideShapePrompt(meetupNow.invite!.id)}>
@@ -257,7 +259,7 @@ export function TodayScreen({ name, programme, relay, myTopics, onAddSessions, o
                 onInviteFromSession={inviteFromSession}
                 onInviteFromBreak={inviteFromBreak}
                 onInviteMore={inviteMore}
-                onShowShape={(id, context) => setShapeFor({ id, context })}
+                onShowShape={(inv, context) => setShapeFor({ id: inv.id, context })}
                 highlighted={!!highlight && meetupOf(r)?.invite?.id === highlight}
                 quiet={quiet}
                 clashWith={
@@ -286,7 +288,7 @@ export function TodayScreen({ name, programme, relay, myTopics, onAddSessions, o
 
       <ProgrammeNote programme={programme} credit={false} />
 
-      {shapeFor && <MeetupShapeView inviteId={shapeFor.id} context={shapeFor.context} onClose={() => setShapeFor(null)} />}
+      {shapeFor && shapeInvite && <MeetupDoodleView invite={shapeInvite} people={connections} context={shapeFor.context} onClose={() => setShapeFor(null)} />}
     </section>
   );
 }

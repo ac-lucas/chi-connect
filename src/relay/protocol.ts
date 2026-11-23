@@ -15,6 +15,7 @@ import type { Connection, Intro, MeetingSpot, SharedProfile } from '../model/typ
 import { cleanText } from '../model/text';
 import { cleanSpot } from '../schedule/spot';
 import { LIMITS_INVITE, parseWireInvite, type WireInvite } from './invites';
+import { decodeDoodle, encodeDoodle } from '../schedule/doodle';
 import { decodeCode, encodeCode, type ConnectPayload } from '../connect/payload';
 import { helloSecret, isPublicKeyText, newPairKey, pairSecret, PUBLIC_KEY_CHARS } from '../connect/pairing';
 import { ADDRESS, isInHome, newAddress, splitAddress, type Home } from './address';
@@ -167,7 +168,8 @@ export async function approveRequest(t: Transport, home: Home, c: Connection, no
 export type PairMessage =
   | { t: 'accept'; v: 1; mailbox: string }
   | { t: 'invite'; v: 1; invite: WireInvite }
-  | { t: 'yes'; v: 1; id: string }
+  /** Yes, with the guest's doodle (the sender holds it up to be found). */
+  | { t: 'yes'; v: 1; id: string; doodle?: string }
   | { t: 'cancel'; v: 1; id: string }
   /** F14: the programme session IDs someone saved, sent only if they chose to share with this person. Empty = stopped sharing. */
   | { t: 'sessions'; v: 1; ids: string[] };
@@ -194,7 +196,11 @@ function parsePairMessage(value: unknown): PairMessage | null {
     const invite = parseWireInvite(msg.invite);
     return invite ? { t: 'invite', v: 1, invite } : null;
   }
-  if ((msg.t === 'yes' || msg.t === 'cancel') && typeof msg.id === 'string' && ID.test(msg.id)) return { t: msg.t, v: 1, id: msg.id };
+  if (msg.t === 'yes' && typeof msg.id === 'string' && ID.test(msg.id)) {
+    const d = decodeDoodle(msg.doodle);
+    return d ? { t: 'yes', v: 1, id: msg.id, doodle: encodeDoodle(d) } : { t: 'yes', v: 1, id: msg.id };
+  }
+  if (msg.t === 'cancel' && typeof msg.id === 'string' && ID.test(msg.id)) return { t: 'cancel', v: 1, id: msg.id };
   if (msg.t === 'sessions' && Array.isArray(msg.ids) && msg.ids.length <= MAX_SHARED_SESSIONS) {
     const ids = [...new Set(msg.ids.filter((x): x is string => typeof x === 'string' && SESSION_ID.test(x)))];
     return { t: 'sessions', v: 1, ids };

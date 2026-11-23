@@ -9,7 +9,7 @@ import type { Transport } from '../../relay/transport';
 import { deleteScheduleItem, skipBreak } from '../../storage/db';
 import { announce } from '../../ui/announce';
 import { keepingFocus } from '../../ui/focus';
-import { ShapeBadge } from '../ShapeCard';
+import { DoodleBadge, myDoodleOf } from '../DoodleCard';
 import { openerFor } from '../../data/icebreakers';
 import { isOnMeetup, meetupContext, meetupOf, PROTECT_LABELS, rowClass, rowEnd, rowGlyph, rowKindLabel, rowStart, rowTitle, type InviteRow, type Row } from './rows';
 
@@ -23,7 +23,7 @@ interface Props {
   onInviteFromBreak: (b: PlannedBreak) => void;
   /** Invite more people to the meetup merged into a session (your own), or start one (theirs). */
   onInviteMore: (session: ScheduleItem, invite: Invite) => void;
-  onShowShape: (inviteId: string, context: string) => void;
+  onShowShape: (invite: Invite, context: string) => void;
   /** Just added (an invite you sent): marked for a moment. */
   highlighted?: boolean;
   /** For protected time: a saved session it overlaps. */
@@ -119,7 +119,7 @@ export function DayRow({ r, now, connections, nameOf, relay, onInviteFromSession
         )}
         {m && isOnMeetup(m) && (
           <p class="shape-line">
-            Look for <ShapeBadge seedKey={inv!.id} />
+            <DoodleBadge inviteId={inv!.id} doodle={myDoodleOf(inv!)} text="Look for your drawing" />
           </p>
         )}
         {opener && (
@@ -193,7 +193,11 @@ export function DayRow({ r, now, connections, nameOf, relay, onInviteFromSession
   );
 }
 
-/** Show your shape, and Leave (or Call off, which asks first: it tells everyone and can't be undone). */
+/** The full-screen doodle card opens for a meetup you're in, and for one you sent before anyone says yes (it waits). */
+const canHoldUp = (r: InviteRow) => isOnMeetup(r) || (!!r.invite?.outgoing && r.invite.status !== 'cancelled');
+const holdUpLabel = (inv: Invite) => (inv.outgoing && inv.acceptedIds.length === 0 ? 'Your doodle' : 'Hold up their drawing');
+
+/** Hold up their drawing, and Leave (or Call off, which asks first: it tells everyone and can't be undone). */
 function MeetupActions({ r, relay, onShowShape }: { r: InviteRow; relay: Transport | null; onShowShape: Props['onShowShape'] }) {
   const [confirming, setConfirming] = useState(false);
   const confirmBtn = useRef<HTMLButtonElement>(null);
@@ -204,15 +208,15 @@ function MeetupActions({ r, relay, onShowShape }: { r: InviteRow; relay: Transpo
   const outgoing = !!r.invite?.outgoing;
   return (
     <>
-      {isOnMeetup(r) && (
+      {canHoldUp(r) && (
         <button
           type="button"
           class="button quiet"
           data-shape-for={r.invite!.id}
-          aria-label={`Show your shape for ${r.item.title}`}
-          onClick={() => onShowShape(r.invite!.id, meetupContext(r.item, r.invite!))}
+          aria-label={`${holdUpLabel(r.invite!)} for ${r.item.title}`}
+          onClick={() => onShowShape(r.invite!, meetupContext(r.item, r.invite!))}
         >
-          Show your shape
+          {holdUpLabel(r.invite!)}
         </button>
       )}
       {outgoing && confirming ? (
@@ -276,15 +280,15 @@ function MergedActions({
   const outgoing = !!inv?.outgoing;
   return (
     <>
-      {isOnMeetup(meetup) && (
+      {canHoldUp(meetup) && (
         <button
           type="button"
           class="button quiet"
           data-shape-for={inv!.id}
-          aria-label={`Show your shape for ${session.title}`}
-          onClick={() => onShowShape(inv!.id, meetupContext(meetup.item, inv!))}
+          aria-label={`${holdUpLabel(inv!)} for ${session.title}`}
+          onClick={() => onShowShape(inv!, meetupContext(meetup.item, inv!))}
         >
-          Show your shape
+          {holdUpLabel(inv!)}
         </button>
       )}
       <button

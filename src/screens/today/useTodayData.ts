@@ -12,7 +12,7 @@ export interface TodayData {
   /** Incoming invites waiting for an answer. */
   incoming: Invite[];
   connections: Connection[];
-  /** Meetups whose "display your shape" prompt was hidden. */
+  /** Meetups whose "hold up their drawing" prompt was hidden. */
   hiddenPrompts: string[];
   /** Suggestions paused (no conversation starters either). */
   quiet: boolean;

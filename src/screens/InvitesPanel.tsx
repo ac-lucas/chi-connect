@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import type { Connection, Invite, ScheduleItem } from '../model/types';
 import { clockTime, dayLabel, overlaps, startOfDay, timeRange, timeRangeSpoken } from '../programme/programme';
 import { describeSpot } from '../schedule/spot';
@@ -7,7 +7,8 @@ import type { Transport } from '../relay/transport';
 import type { PlannedBreak } from '../schedule/breaks';
 import { announce } from '../ui/announce';
 import { keepingFocus } from '../ui/focus';
-import { ShapeBadge } from './ShapeCard';
+import { DoodleGraphic, DoodlePad, promptText } from './DoodleCard';
+import { decodeDoodle, doodleColour, generateDoodle } from '../schedule/doodle';
 
 interface Props {
   invites: Invite[];
@@ -28,6 +29,13 @@ const clock = clockTime;
 export function InvitesPanel({ invites, connections, items, relay, heldUntil, onAccepted }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  /** Saying yes is two steps: draw yours (or skip), then send. */
+  const [drawingFor, setDrawingFor] = useState<string | null>(null);
+  const [myDoodle, setMyDoodle] = useState<string | null>(null);
+  useEffect(() => {
+    // The Yes button is swapped for the send button: keep focus there, not lost on the page.
+    if (drawingFor) document.getElementById(`yes-${drawingFor}`)?.focus();
+  }, [drawingFor]);
 
   if (heldUntil !== null && invites.length) {
     return (
@@ -41,7 +49,9 @@ export function InvitesPanel({ invites, connections, items, relay, heldUntil, on
     setBusy(i.id);
     setProblem(null);
     try {
-      await acceptInvite(relay, i);
+      await acceptInvite(relay, i, myDoodle ?? undefined);
+      setDrawingFor(null);
+      setMyDoodle(null);
       onAccepted?.(i.start);
       announce(`Added to ${dayLabel(i.start, 'long')}: ${KIND_INFO[i.kind].label} with ${i.senderName}, ${timeRangeSpoken(i.start, i.end)}${i.place ? `, ${i.place}` : ''}.`);
     } catch {
@@ -82,14 +92,35 @@ export function InvitesPanel({ invites, connections, items, relay, heldUntil, on
             {i.place && i.kind !== 'meal' && <p>Where: {i.place}</p>}
             {spot && <p>Spot: {spot}</p>}
             {i.note && <p class="invite-note">“{i.note}”</p>}
-            <p class="shape-line">
-              Say yes and you’ll both get <ShapeBadge seedKey={i.id} /> to hold up and find each other.
-            </p>
+            <div class="doodle-invite">
+              <span class="doodle-swatch" style={{ background: doodleColour(i.id).bg, color: doodleColour(i.id).fg }}>
+                <DoodleGraphic doodle={(i.doodle && decodeDoodle(i.doodle)) || generateDoodle(i.id)} size="4.5rem" label={`${i.senderName}’s drawing`} />
+              </span>
+              <p>
+                {i.senderName} drew <strong>{promptText(i.prompt)}</strong>. Say yes and draw yours: at the meetup you hold up theirs, they hold up yours.
+              </p>
+            </div>
             {clash && <p class="hint">Heads-up: overlaps {clash.title}.</p>}
+            {drawingFor === i.id && <DoodlePad prompt={promptText(i.prompt)} onChange={setMyDoodle} />}
             <div class="actions">
-              <button type="button" class="button" disabled={busy === i.id} aria-describedby={`inv-${i.id}`} onClick={() => void keepingFocus(() => yes(i))}>
-                Yes
-              </button>
+              {drawingFor === i.id ? (
+                <button type="button" id={`yes-${i.id}`} class="button" disabled={busy === i.id} aria-describedby={`inv-${i.id}`} onClick={() => void keepingFocus(() => yes(i))}>
+                  {myDoodle ? 'Send my yes' : 'Skip drawing, say yes'}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  class="button"
+                  aria-describedby={`inv-${i.id}`}
+                  onClick={() => {
+                    setDrawingFor(i.id);
+                    setMyDoodle(null);
+                    announce(`Draw ${promptText(i.prompt)} above, or skip drawing.`);
+                  }}
+                >
+                  Yes
+                </button>
+              )}
               <button type="button" class="button secondary" aria-describedby={`inv-${i.id}`} onClick={() => void keepingFocus(() => no(i))}>
                 Not now
               </button>

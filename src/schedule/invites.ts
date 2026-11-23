@@ -4,6 +4,7 @@ import { DEMO_NEVER_ANSWERS } from '../data/demo';
 import { randomId } from '../model/ids';
 import type { Connection, Invite, InviteKind, MeetingSpot, ScheduleItem } from '../model/types';
 import type { WireInvite } from '../relay/invites';
+import { encodeDoodle, generateDoodle, pickPrompt, skipDoodle } from './doodle';
 import { sendPairMessage, type PairMessage } from '../relay/protocol';
 import type { Transport } from '../relay/transport';
 /** Invites wait (quietly, only you see it) during a Recharge block, and at no other time. */
@@ -45,6 +46,8 @@ export interface NewInvite {
   note?: string;
   sessionId?: string;
   sessionTitle?: string;
+  prompt?: string;
+  doodle?: string;
 }
 
 export interface SendResult {
@@ -77,6 +80,8 @@ export async function sendInvite(
     note: n.note,
     programmeSessionId: n.sessionId,
     sessionTitle: n.sessionTitle,
+    prompt: n.prompt,
+    doodle: n.doodle,
     createdAt: now,
     expiresAt: n.start,
     recipientIds: recipients.map((r) => r.id),
@@ -89,7 +94,7 @@ export async function sendInvite(
 }
 
 /**
- * Invite more people to a meetup you already sent (same invite, same shape). Only new people are added and sent
+ * Invite more people to a meetup you already sent (same invite, same doodles). Only new people are added and sent
  * it. Returns who it didn't reach, like deliverInvite.
  */
 export async function addPeopleToInvite(
@@ -128,6 +133,8 @@ export async function deliverInvite(
     note: invite.note,
     sessionId: invite.programmeSessionId,
     sessionTitle: invite.sessionTitle,
+    prompt: invite.prompt,
+    doodle: invite.doodle,
   };
   const failed: Connection[] = [];
   for (const r of recipients) {
@@ -155,7 +162,9 @@ export async function deliverInvite(
 async function simulatedYes(inviteId: string, who: Connection) {
   const inv = await getInvite(inviteId);
   if (!inv || inv.status === 'cancelled' || inv.acceptedIds.includes(who.id)) return;
-  await putInvite({ ...inv, acceptedIds: [...inv.acceptedIds, who.id], simulated: true }); // open screens update by themselves
+  // Demo people "draw" a generated doodle.
+  const guestDoodles = { ...inv.guestDoodles, [who.id]: encodeDoodle(generateDoodle(`${inviteId}:${who.id}`)) };
+  await putInvite({ ...inv, acceptedIds: [...inv.acceptedIds, who.id], guestDoodles, simulated: true }); // open screens update by themselves
 }
 
 function scheduleFor(i: Invite, title?: string): ScheduleItem {
@@ -194,6 +203,8 @@ export async function handleInviteMessage(c: Connection, msg: Exclude<PairMessag
       note: w.note,
       programmeSessionId: w.sessionId,
       sessionTitle: w.sessionTitle,
+      prompt: w.prompt,
+      doodle: w.doodle,
       createdAt: now,
       expiresAt: w.start,
       receivedAt: sentAt,
@@ -208,7 +219,8 @@ export async function handleInviteMessage(c: Connection, msg: Exclude<PairMessag
   if (msg.t === 'yes') {
     // Only count a yes from someone who was actually invited.
     if (!inv.outgoing || !inv.recipientIds.includes(c.id) || inv.acceptedIds.includes(c.id)) return null;
-    await putInvite({ ...inv, acceptedIds: [...inv.acceptedIds, c.id] });
+    const guestDoodles = msg.doodle ? { ...inv.guestDoodles, [c.id]: msg.doodle } : inv.guestDoodles;
+    await putInvite({ ...inv, acceptedIds: [...inv.acceptedIds, c.id], guestDoodles });
     return 'changed';
   }
   // Cancel only counts from the person who sent the invite (and a declined tombstone stays as it is).
@@ -218,17 +230,20 @@ export async function handleInviteMessage(c: Connection, msg: Exclude<PairMessag
   return 'changed';
 }
 
-/** Say yes: it goes into the day with the place filled in, and the sender is told. */
-export async function acceptInvite(relay: Transport | null, inv: Invite): Promise<void> {
+/**
+ * Say yes: it goes into the day with the place filled in, and the sender is told, with my doodle (drawn, or a
+ * generated one if I skipped) so they can hold it up for me to find.
+ */
+export async function acceptInvite(relay: Transport | null, inv: Invite, myDoodle: string = encodeDoodle(skipDoodle())): Promise<void> {
   if (!inv.simulated) {
     const c = inv.fromConnectionId ? await getConnection(inv.fromConnectionId) : null;
     if (!c) throw new Error('no-connection');
     if (!c.demo) {
       if (!relay) throw new Error('no-relay');
-      await sendPairMessage(relay, c, { t: 'yes', v: 1, id: inv.id }, ttlFor(inv.start, Date.now()));
+      await sendPairMessage(relay, c, { t: 'yes', v: 1, id: inv.id, doodle: myDoodle }, ttlFor(inv.start, Date.now()));
     }
   }
-  const accepted = { ...inv, status: 'accepted' as const };
+  const accepted = { ...inv, status: 'accepted' as const, myDoodle };
   await putInvite(accepted);
   await putScheduleItem(scheduleFor(accepted));
 }
@@ -238,7 +253,7 @@ export async function acceptInvite(relay: Transport | null, inv: Invite): Promis
  * no details, so the same message delivered again can't bring it back; it goes for good once its time passes.
  */
 export async function declineInvite(inv: Invite): Promise<void> {
-  await putInvite({ ...inv, status: 'declined', place: undefined, meetingSpot: undefined, note: undefined });
+  await putInvite({ ...inv, status: 'declined', place: undefined, meetingSpot: undefined, note: undefined, doodle: undefined, myDoodle: undefined, guestDoodles: undefined });
 }
 
 /**
@@ -283,6 +298,9 @@ export async function simulateIncoming(from: Connection, n: NewInvite, now = Dat
     note: n.note,
     programmeSessionId: n.sessionId,
     sessionTitle: n.sessionTitle,
+    // The demo person "drew" theirs: a generated doodle.
+    prompt: n.prompt ?? pickPrompt(),
+    doodle: n.doodle ?? encodeDoodle(skipDoodle()),
     createdAt: now,
     expiresAt: n.start,
     receivedAt: now,
@@ -298,7 +316,7 @@ export async function simulateIncoming(from: Connection, n: NewInvite, now = Dat
 /**
  * Tidy invites, then return the pending ones to show now.
  *  - Unanswered, declined or cancelled incoming invites go for good once their time has come.
- *  - Once a meetup has ended, its meeting spot and note are deleted (the spot belongs to one meetup only).
+ *  - Once a meetup has ended, its meeting spot, note and doodles are deleted (they belong to one meetup only).
  *    What's left (who, when, where) stays for your own day history and recap.
  */
 export async function pendingIncoming(now = Date.now()): Promise<Invite[]> {
@@ -309,8 +327,8 @@ export async function pendingIncoming(now = Date.now()): Promise<Invite[]> {
       await deleteInvite(i.id);
       continue;
     }
-    if (i.end <= now && (i.meetingSpot || i.note)) {
-      const stripped = { ...i, meetingSpot: undefined, note: undefined };
+    if (i.end <= now && (i.meetingSpot || i.note || i.doodle || i.myDoodle || i.guestDoodles)) {
+      const stripped = { ...i, meetingSpot: undefined, note: undefined, doodle: undefined, myDoodle: undefined, guestDoodles: undefined };
       await putInvite(stripped);
       kept.push(stripped);
       continue;

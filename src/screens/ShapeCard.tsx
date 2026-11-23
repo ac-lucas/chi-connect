@@ -1,6 +1,7 @@
+import type { ComponentChildren } from 'preact';
 import { createPortal } from 'preact/compat';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { findMeCard, SHAPE_PATHS, type ShapeCard } from '../schedule/findme';
+import { SHAPE_PATHS, type ShapeCard } from '../schedule/findme';
 
 function Pattern({ kind, colour, id }: { kind: ShapeCard['pattern']; colour: string; id: string }) {
   return (
@@ -28,26 +29,27 @@ export function ShapeGraphic({ card, size, label, idSuffix }: { card: ShapeCard;
   );
 }
 
-/** Small inline preview: "★ Orange Star" on its colour, so people know what to look for before they arrive. */
-export function ShapeBadge({ seedKey, card: given }: { seedKey?: string; card?: ShapeCard }) {
-  const [card, setCard] = useState<ShapeCard | null>(given ?? null);
-  useEffect(() => {
-    if (!given && seedKey) void findMeCard(seedKey).then(setCard);
-  }, [seedKey, given]);
-  if (!card) return null;
-  return (
-    <span class="shape-badge" style={{ background: card.colour.bg, color: card.colour.fg }}>
-      <ShapeGraphic card={card} size="1.25em" idSuffix={`b-${seedKey ?? card.word}`} />
-      <span>{card.word}</span>
-    </span>
-  );
-}
-
 /**
  * Full-screen "Your shape" to hold up. A word, a shape and a pattern, never colour alone. A dialog: focus moves in,
  * Escape or Done closes, focus goes back. Keeps the screen awake while it's up, where the browser allows it.
  */
 export function ShapeCardView({ card, context, onClose }: { card: ShapeCard; context?: string; onClose: () => void }) {
+  return (
+    <HoldUpDialog bg={card.colour.bg} fg={card.colour.fg} lead="Hold this up. Look for the same shape." context={context} onClose={onClose}>
+      <ShapeGraphic card={card} label={`${card.word} with ${card.pattern.toLowerCase()}`} idSuffix="full" />
+      <h2 id="findme-word" class="findme-word">
+        {card.word}
+      </h2>
+      <p class="findme-pattern">{card.pattern}</p>
+    </HoldUpDialog>
+  );
+}
+
+/**
+ * The full-screen shell for anything you hold up to find someone (a shape, a doodle). Its children must include
+ * an element with id "findme-word": the dialog's name.
+ */
+export function HoldUpDialog({ bg, fg, lead, context, onClose, children }: { bg: string; fg: string; lead: string; context?: string; onClose: () => void; children: ComponentChildren }) {
   const done = useRef<HTMLButtonElement>(null);
   const close = useRef<HTMLButtonElement>(null);
   const [opener] = useState(() => document.activeElement as HTMLElement | null);
@@ -65,9 +67,14 @@ export function ShapeCardView({ card, context, onClose }: { card: ShapeCard; con
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
       if (e.key === 'Tab') {
-        // Keep focus inside: it moves between the corner close button and Done.
+        // Keep focus inside the card: Tab and Shift+Tab go round its buttons.
+        const box = done.current?.closest('.findme');
+        const all = box ? Array.from(box.querySelectorAll<HTMLElement>('button:not([disabled])')) : [];
+        if (!all.length) return;
         e.preventDefault();
-        (document.activeElement === done.current ? close.current : done.current)?.focus();
+        const at = all.indexOf(document.activeElement as HTMLElement);
+        const next = e.shiftKey ? (at <= 0 ? all.length - 1 : at - 1) : at === -1 || at === all.length - 1 ? 0 : at + 1;
+        all[next]!.focus();
       }
     };
     document.addEventListener('keydown', onKey);
@@ -107,7 +114,6 @@ export function ShapeCardView({ card, context, onClose }: { card: ShapeCard; con
     };
   }, []);
 
-  const { bg, fg } = card.colour;
   // Rendered straight into <body>, outside #app, so making the app inert doesn't make the card inert too.
   return createPortal(
     <div class="findme" role="dialog" aria-modal="true" aria-labelledby="findme-word" aria-describedby="findme-lead" style={{ background: bg, color: fg, '--findme-fg': fg }}>
@@ -115,14 +121,10 @@ export function ShapeCardView({ card, context, onClose }: { card: ShapeCard; con
         <span aria-hidden="true">✕</span>
       </button>
       <p id="findme-lead" class="findme-lead">
-        Hold this up. Look for the same shape.
+        {lead}
       </p>
       {context && <p class="findme-context">{context}</p>}
-      <ShapeGraphic card={card} label={`${card.word} with ${card.pattern.toLowerCase()}`} idSuffix="full" />
-      <h2 id="findme-word" class="findme-word">
-        {card.word}
-      </h2>
-      <p class="findme-pattern">{card.pattern}</p>
+      {children}
       <button type="button" ref={done} class="findme-done" style={{ color: bg, background: fg }} onClick={onClose}>
         Done
       </button>
@@ -130,13 +132,4 @@ export function ShapeCardView({ card, context, onClose }: { card: ShapeCard; con
     </div>,
     document.body,
   );
-}
-
-/** Full-screen shape for a meetup, from its invite ID. */
-export function MeetupShapeView({ inviteId, context, onClose }: { inviteId: string; context?: string; onClose: () => void }) {
-  const [card, setCard] = useState<ShapeCard | null>(null);
-  useEffect(() => {
-    void findMeCard(inviteId).then(setCard);
-  }, [inviteId]);
-  return card ? <ShapeCardView card={card} context={context} onClose={onClose} /> : null;
 }

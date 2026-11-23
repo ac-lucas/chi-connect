@@ -12,6 +12,8 @@ import { announce } from '../ui/announce';
 import { useScreenHeading } from '../ui/useScreenHeading';
 import { useLive } from '../ui/useLive';
 import { SpotPicker } from './SpotPicker';
+import { DoodlePad, promptText } from './DoodleCard';
+import { encodeDoodle, pickPrompt, skipDoodle } from '../schedule/doodle';
 
 export interface InviteDraft {
   /** Kinds offered: break kinds for a gap, side-by-side kinds for a session. */
@@ -57,6 +59,10 @@ export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
   const [ownPlace, setOwnPlace] = useState('');
   const [spot, setSpot] = useState<MeetingSpot | undefined>(undefined);
   const [note, setNote] = useState('');
+  const [prompt, setPrompt] = useState(() => pickPrompt());
+  const [doodle, setDoodle] = useState<string | null>(null);
+  /** Changing the prompt clears the pad, so it remounts. */
+  const [padKey, setPadKey] = useState(0);
   const [sending, setSending] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   /** After a partial failure: the invite that was made, and who it didn't reach (a retry sends only to them). */
@@ -125,7 +131,18 @@ export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
         relay,
         me,
         recipients,
-        { kind, start, end, place, spot, note: cleanText(note, LIMITS_INVITE.note) || undefined, sessionId: draft.sessionId, sessionTitle: draft.sessionTitle },
+        {
+          kind,
+          start,
+          end,
+          place,
+          spot,
+          note: cleanText(note, LIMITS_INVITE.note) || undefined,
+          sessionId: draft.sessionId,
+          sessionTitle: draft.sessionTitle,
+          prompt,
+          doodle: doodle ?? encodeDoodle(skipDoodle()), // skipped: a generated one, so they still have something to hold up
+        },
         (who) => announce(`${who.profile.displayName} said yes.`),
       );
       if (result.failed.length) return partly(result);
@@ -170,7 +187,7 @@ export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
         </p>
       </div>
 
-      {adding && <p>They join you at {draft.sessionTitle ?? 'the session'} and look for the same shape.</p>}
+      {adding && <p>They join you at {draft.sessionTitle ?? 'the session'}, draw their own and hold up yours.</p>}
 
       {!adding && draft.kinds.length > 1 && (
         <fieldset>
@@ -260,7 +277,24 @@ export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
             <input id="invite-note" type="text" maxLength={LIMITS_INVITE.note} value={note} onInput={(e) => setNote(e.currentTarget.value)} />
           </div>
 
-          <p class="hint">Everyone who says yes gets the same shape to hold up, so you can spot each other in a crowd.</p>
+          <fieldset class="stack">
+            <legend>Your doodle</legend>
+            <p class="hint">Everyone draws the same prompt. At the meetup they hold up yours and you hold up theirs: look for your own. Skip it and one is made for you.</p>
+            <DoodlePad key={padKey} prompt={promptText(prompt)} onChange={setDoodle} />
+            <div class="actions">
+              <button
+                type="button"
+                class="button quiet"
+                onClick={() => {
+                  setPrompt((p) => pickPrompt(p));
+                  setDoodle(null);
+                  setPadKey((k) => k + 1);
+                }}
+              >
+                Different prompt
+              </button>
+            </div>
+          </fieldset>
         </>
       )}
 

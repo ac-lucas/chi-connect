@@ -154,6 +154,14 @@ export interface Invite {
   sessionTitle?: string;
   meetingSpot?: MeetingSpot;
   note?: string;
+  /** What everyone draws (a key of PROMPTS in src/schedule/doodle.ts). */
+  prompt?: string;
+  /** The sender's doodle (encoded strokes). Guests hold it up; the sender looks for it. */
+  doodle?: string;
+  /** Incoming, once I said yes: my own doodle (the sender holds it up; I look for it). */
+  myDoodle?: string;
+  /** Outgoing: each guest's doodle, by connection ID, from their yes. I hold these up; each guest looks for theirs. */
+  guestDoodles?: Record<string, string>;
   createdAt: number;
   /** When it disappears if nobody answers (its start time). */
   expiresAt: number;

@@ -171,9 +171,11 @@ describe('invites between connected pairs', () => {
     await sendPairMessage(relay, a.only(), { t: 'invite', v: 1, invite: { id, kind: 'meal', start, end: start + 2_700_000, place: 'Lunch hall' } });
     expect((await b.sync(relay)).messages).toBe(1);
     expect(gotB).toEqual([{ t: 'invite', v: 1, invite: { id, kind: 'meal', start, end: start + 2_700_000, place: 'Lunch hall' } }]);
-    await sendPairMessage(relay, b.only(), { t: 'yes', v: 1, id });
+    await sendPairMessage(relay, b.only(), { t: 'yes', v: 1, id, doodle: 'AQIBAgME' });
+    await sendPairMessage(relay, b.only(), { t: 'yes', v: 1, id, doodle: 'not a doodle' } as PairMessage);
     await a.sync(relay);
-    expect(gotA).toEqual([{ t: 'yes', v: 1, id }]);
+    // A good doodle comes through; a bad one is dropped but the yes still counts.
+    expect(gotA).toEqual([{ t: 'yes', v: 1, id, doodle: 'AQIBAgME' }, { t: 'yes', v: 1, id }]);
     expect((await b.sync(relay)).messages).toBe(0); // acked on this call, not handed over again
   });
 
