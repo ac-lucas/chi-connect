@@ -58,6 +58,12 @@ export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
   const [placeId, setPlaceId] = useState<string>(draft.room ? 'room' : (PLACES[0]?.id ?? 'own'));
   const [ownPlace, setOwnPlace] = useState('');
   const [spot, setSpot] = useState<MeetingSpot | undefined>(undefined);
+  /** The meeting spot is optional and tucked away: the drawings do the finding. */
+  const [spotOpen, setSpotOpen] = useState(false);
+  useEffect(() => {
+    // The button that opened it is gone: move focus to the first choice, not lost on the page.
+    if (spotOpen) document.querySelector<HTMLInputElement>('.spot-picker input')?.focus();
+  }, [spotOpen]);
   const [note, setNote] = useState('');
   const [prompt, setPrompt] = useState(() => pickPrompt());
   /** Prompts drawn before (this phone only), so a new invite starts with one not drawn yet. */
@@ -281,7 +287,15 @@ export function InviteScreen({ me, draft, relay, onSent, onCancel }: Props) {
 
       {!adding && (
         <>
-          <SpotPicker value={spot} onChange={setSpot} />
+          {spotOpen ? (
+            <SpotPicker value={spot} onChange={setSpot} />
+          ) : (
+            <div class="actions">
+              <button type="button" class="button quiet" aria-expanded="false" onClick={() => setSpotOpen(true)}>
+                Pick a spot in the room
+              </button>
+            </div>
+          )}
 
           <div class="field">
             <label for="invite-note">A note (optional)</label>

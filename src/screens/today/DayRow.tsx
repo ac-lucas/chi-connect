@@ -10,8 +10,7 @@ import { deleteScheduleItem, skipBreak } from '../../storage/db';
 import { announce } from '../../ui/announce';
 import { keepingFocus } from '../../ui/focus';
 import { DoodleBadge, myDoodleOf } from '../DoodleCard';
-import { openerFor } from '../../data/icebreakers';
-import { isOnMeetup, meetupContext, meetupOf, PROTECT_LABELS, rowClass, rowEnd, rowGlyph, rowKindLabel, rowStart, rowTitle, type InviteRow, type Row } from './rows';
+import { isOnMeetup, meetupContext, meetupOf, PROTECT_LABELS, rowClass, rowEnd, rowGlyph, rowKey, rowKindLabel, rowStart, rowTitle, type InviteRow, type Row } from './rows';
 
 interface Props {
   r: Row;
@@ -28,8 +27,6 @@ interface Props {
   highlighted?: boolean;
   /** For protected time: a saved session it overlaps. */
   clashWith?: string;
-  /** Suggestions paused: no conversation starters. */
-  quiet?: boolean;
 }
 
 /** Offer Invite only while there's enough of it left to meet (an invite starts at least 2 minutes out). */
@@ -64,13 +61,21 @@ async function leaveOrCancel(r: InviteRow, relay: Transport | null) {
   }
 }
 
-export function DayRow({ r, now, connections, nameOf, relay, onInviteFromSession, onInviteFromBreak, onInviteMore, onShowShape, highlighted, clashWith, quiet }: Props) {
+export function DayRow({ r, now, connections, nameOf, relay, onInviteFromSession, onInviteFromBreak, onInviteMore, onShowShape, highlighted, clashWith }: Props) {
   const going = r.kind === 'session' ? alsoGoing(r.item.programSessionId, connections) : [];
   const past = rowEnd(r) <= now;
   const canInvite = rowEnd(r) > now + MIN_INVITE_MS;
   const m = meetupOf(r);
   const inv = m?.invite;
   const merged = r.kind === 'session' && !!m;
+  /** Row actions (Invite, Remove, Skip, Leave) stay out of sight until the row is tapped. Holding up the drawing doesn't. */
+  const [open, setOpen] = useState(false);
+  const actionsId = `actions-${rowKey(r)}`;
+  const toggleFromRow = (e: MouseEvent) => {
+    // A tap anywhere on the row opens it, except on its own buttons and links.
+    if ((e.target as HTMLElement).closest('button, a, input, label')) return;
+    setOpen((o) => !o);
+  };
   const meetupMeta = m
       ? [
           merged && inv
@@ -92,10 +97,8 @@ export function DayRow({ r, now, connections, nameOf, relay, onInviteFromSession
           .filter(Boolean)
           .join(' · ')
       : '';
-  // Something to ask about a session that just finished (not on meetups).
-  const opener = !quiet && r.kind === 'session' && past && now - r.item.end < 3 * 60 * 60_000 ? openerFor('after-session', r.item.id) : null;
   return (
-    <li class={`day-row ${rowClass(r)}${merged ? ' is-social' : ''}${past ? ' is-past' : ''}${highlighted ? ' just-added' : ''}`}>
+    <li class={`day-row ${rowClass(r)}${merged ? ' is-social' : ''}${past ? ' is-past' : ''}${highlighted ? ' just-added' : ''}${open ? ' is-open' : ''}`} onClick={toggleFromRow}>
       <span class="day-glyph" aria-hidden="true">
         {rowGlyph(r)}
       </span>
@@ -108,7 +111,12 @@ export function DayRow({ r, now, connections, nameOf, relay, onInviteFromSession
           {highlighted && <span class="day-kind"> · Just added</span>}
         </p>
         <p class="day-title">
-          {r.kind === 'invite' && r.invite ? inviteTitle(r.invite, r.invite.acceptedIds.map(nameOf)) : rowTitle(r)}
+          <button type="button" class="row-toggle" aria-expanded={open} aria-controls={actionsId} onClick={() => setOpen((o) => !o)}>
+            {r.kind === 'invite' && r.invite ? inviteTitle(r.invite, r.invite.acceptedIds.map(nameOf)) : rowTitle(r)}
+            <span class="row-chevron" aria-hidden="true">
+              {open ? '▴' : '▾'}
+            </span>
+          </button>
         </p>
         {r.kind === 'session' && r.item.place && <p class="muted">{r.item.place}</p>}
         {meetupMeta && (
@@ -120,13 +128,6 @@ export function DayRow({ r, now, connections, nameOf, relay, onInviteFromSession
         {m && isOnMeetup(m) && (
           <p class="shape-line">
             <DoodleBadge inviteId={inv!.id} doodle={myDoodleOf(inv!)} text="Look for your drawing" />
-          </p>
-        )}
-        {opener && (
-          <p class="opener">
-            <span aria-hidden="true">💬 </span>
-            <span class="visually-hidden">Something to say: </span>
-            {opener}
           </p>
         )}
         {going.length > 0 && r.kind === 'session' && !merged && (
@@ -143,11 +144,11 @@ export function DayRow({ r, now, connections, nameOf, relay, onInviteFromSession
         {r.kind === 'protected' && <p class="hint">{PROTECT_LABELS[r.item.protectedKind as 'recharge' | 'off']?.line}</p>}
         {r.kind === 'protected' && clashWith && <p class="hint">Heads-up: this is during {clashWith}.</p>}
       </div>
-      <div class="day-actions">
+      <div class="day-actions" id={actionsId}>
         {r.kind === 'session' && merged && m && (
-          <MergedActions session={r.item} meetup={m} relay={relay} onShowShape={onShowShape} canInvite={canInvite} onInviteMore={onInviteMore} />
+          <MergedActions session={r.item} meetup={m} relay={relay} onShowShape={onShowShape} canInvite={canInvite} onInviteMore={onInviteMore} open={open} />
         )}
-        {r.kind === 'session' && !merged && (
+        {open && r.kind === 'session' && !merged && (
           <>
             {/* Stays in place once it's too late, just switched off, so the row doesn't change shape. */}
             <button
@@ -164,12 +165,12 @@ export function DayRow({ r, now, connections, nameOf, relay, onInviteFromSession
             </button>
           </>
         )}
-        {r.kind === 'protected' && (
+        {open && r.kind === 'protected' && (
           <button type="button" class="button quiet" aria-label={`Remove ${r.item.title} at ${clock(r.item.start)}`} onClick={() => void keepingFocus(() => removeItem(r.item))}>
             Remove
           </button>
         )}
-        {r.kind === 'break' && (
+        {open && r.kind === 'break' && (
           <>
             <button
               type="button"
@@ -187,7 +188,7 @@ export function DayRow({ r, now, connections, nameOf, relay, onInviteFromSession
             )}
           </>
         )}
-        {r.kind === 'invite' && m && <MeetupActions r={m} relay={relay} onShowShape={onShowShape} />}
+        {r.kind === 'invite' && m && <MeetupActions r={m} relay={relay} onShowShape={onShowShape} open={open} />}
       </div>
     </li>
   );
@@ -198,7 +199,7 @@ const canHoldUp = (r: InviteRow) => isOnMeetup(r) || (!!r.invite?.outgoing && r.
 const holdUpLabel = (inv: Invite) => (inv.outgoing && inv.acceptedIds.length === 0 ? 'Your doodle' : 'Hold up their drawing');
 
 /** Hold up their drawing, and Leave (or Call off, which asks first: it tells everyone and can't be undone). */
-function MeetupActions({ r, relay, onShowShape }: { r: InviteRow; relay: Transport | null; onShowShape: Props['onShowShape'] }) {
+function MeetupActions({ r, relay, onShowShape, open }: { r: InviteRow; relay: Transport | null; onShowShape: Props['onShowShape']; open: boolean }) {
   const [confirming, setConfirming] = useState(false);
   const confirmBtn = useRef<HTMLButtonElement>(null);
   const callOffBtn = useRef<HTMLButtonElement>(null);
@@ -219,7 +220,7 @@ function MeetupActions({ r, relay, onShowShape }: { r: InviteRow; relay: Transpo
           {holdUpLabel(r.invite!)}
         </button>
       )}
-      {outgoing && confirming ? (
+      {!open ? null : outgoing && confirming ? (
         <span role="group" aria-label={`Call off ${r.item.title}?`} class="inline-confirm">
           <span>Call it off? Everyone invited is told.</span>{' '}
           <button type="button" class="button danger" ref={confirmBtn} onClick={() => void keepingFocus(() => leaveOrCancel(r, relay))}>
@@ -262,7 +263,9 @@ function MergedActions({
   onShowShape,
   canInvite,
   onInviteMore,
+  open,
 }: {
+  open: boolean;
   session: ScheduleItem;
   meetup: InviteRow;
   relay: Transport | null;
@@ -291,16 +294,18 @@ function MergedActions({
           {holdUpLabel(inv!)}
         </button>
       )}
-      <button
-        type="button"
-        class="button quiet"
-        disabled={!canInvite}
-        aria-label={`Invite more people to ${session.title}${canInvite ? '' : ' (too late now)'}`}
-        onClick={() => onInviteMore(session, inv!)}
-      >
-        Invite
-      </button>
-      {confirming ? (
+      {open && (
+        <button
+          type="button"
+          class="button quiet"
+          disabled={!canInvite}
+          aria-label={`Invite more people to ${session.title}${canInvite ? '' : ' (too late now)'}`}
+          onClick={() => onInviteMore(session, inv!)}
+        >
+          Invite
+        </button>
+      )}
+      {!open ? null : confirming ? (
         <span role="group" aria-label={`Remove ${session.title}?`} class="inline-confirm">
           <span>
             Remove this session? {outgoing ? 'Sitting together is called off, and everyone you invited is told.' : 'You’ll leave sitting together too. Nobody is told.'}

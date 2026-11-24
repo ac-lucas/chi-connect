@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { Program } from '../program/types';
 import { nextDay, startOfDay } from '../program/program';
-import { planDay, type Busy } from '../schedule/breaks';
+import { busyFrom, planDay } from '../schedule/breaks';
 import { energyToday } from '../schedule/energy';
 import { buildRecap, recapText, type Recap } from '../schedule/recap';
 import { getSetting, listAllNotes, listAllSchedule, listCatchUp, listConnections, listFollowUps, listInvites, putFollowUp } from '../storage/db';
@@ -25,14 +25,14 @@ export function RecapScreen({ program, onBack }: { program: Program; onBack: () 
       const level = energyToday(await getSetting('energy')).level;
       // Breathers that have already happened, across the days you planned.
       const days = [...new Set(items.filter((i) => i.type === 'session').map((i) => startOfDay(i.start)))];
+      const invites = await listInvites();
+      const mealInvites = new Set(invites.filter((i) => i.kind === 'meal').map((i) => i.id));
       let breathers = 0;
       for (const d of days) {
-        const busy: Busy[] = items
-          .filter((i) => i.start >= d && i.start < nextDay(d) && (i.type === 'session' || i.type === 'protected' || i.type === 'invite'))
-          .map((i) => ({ id: i.id, start: i.start, end: i.end, kind: i.type === 'session' ? 'session' : i.type === 'protected' ? 'protected' : 'meetup' }));
+        const busy = busyFrom(items.filter((i) => i.start >= d && i.start < nextDay(d)), mealInvites);
         breathers += planDay(busy, d, level, undefined, skipped).breaks.filter((b) => b.end < Date.now()).length;
       }
-      setRecap(buildRecap(program, items, await listInvites(), await listConnections(), await listCatchUp(), breathers));
+      setRecap(buildRecap(program, items, invites, await listConnections(), await listCatchUp(), breathers));
     })();
   }, [program]);
 

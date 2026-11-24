@@ -16,8 +16,8 @@ import { deleteInvite, deleteScheduleItem, getConnection, getInvite, listInvites
 
 export const KIND_INFO: Record<InviteKind, { label: string; glyph: string; line: (i: { sessionTitle?: string; place?: string }) => string }> = {
   meal: { label: 'Lunch', glyph: '◒', line: (i) => (i.place ? `Lunch at ${i.place}.` : 'Lunch together.') },
-  'break-together': { label: 'Break together', glyph: '○', line: () => 'It’s a break: just chill together or chat about life. No agenda.' },
-  'sit-together': { label: 'Sit together', glyph: '▲', line: (i) => `Sit together at ${i.sessionTitle ?? 'the session'}. No talking required.` },
+  'break-together': { label: 'Break together', glyph: '○', line: () => 'Hang out between sessions. Talking optional.' },
+  'sit-together': { label: 'Sit together', glyph: '▲', line: (i) => `Save each other a seat at ${i.sessionTitle ?? 'the session'}.` },
   'arrive-together': {
     label: 'Arrive together',
     glyph: '▲',

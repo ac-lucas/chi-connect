@@ -32,7 +32,7 @@ export const ICEBREAKERS: Record<Situation, readonly string[]> = {
   'side-by-side': [
     'Mind if I sit here?',
     'Want to compare notes after?',
-    'No need to chat, just nice to sit with someone.',
+    'Is this seat taken?',
   ],
   closer: [
     'I’m going to grab a coffee before the next one. Good to meet you.',

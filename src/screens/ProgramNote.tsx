@@ -1,4 +1,3 @@
-import { dayLabel } from '../program/program';
 import type { Program } from '../program/types';
 
 /**
@@ -10,8 +9,7 @@ export function ProgramNote({ program, credit = true }: { program: Program; cred
     <div class="hint stack-tight">
       {program.shiftedFrom !== undefined && (
         <p>
-          <span class="badge">Preview</span> Last year’s {program.name} program, shown as if it starts{' '}
-          {dayLabel(program.sessions[0]?.start ?? Date.now(), 'long')}. Times are as published; parallel tracks share a slot.
+          <span class="badge">Preview</span> {program.name} program, moved to this week.
         </p>
       )}
       {credit && program.credit && (

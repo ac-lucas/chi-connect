@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { planDay, type Busy } from './breaks';
+import { busyFrom, planDay, type Busy } from './breaks';
 import { energyToday } from './energy';
 
 const DAY = new Date(2027, 3, 12).getTime(); // local midnight
@@ -43,6 +43,32 @@ describe('planDay', () => {
     const plan = planDay([session('09:00', '11:00'), session('11:00', '13:00'), session('13:05', '15:00')], DAY, 'up-for-it');
     expect(plan.breaks.some((b) => b.kind === 'meal')).toBe(false);
     expect(plan.headsUps).toContainEqual({ kind: 'no-lunch' });
+  });
+
+  it('counts lunch with someone as lunch: no suggested lunch and no heads-up', () => {
+    const lunch: Busy = { id: 'inv-1', start: t('12:35'), end: t('13:10'), kind: 'meetup', meal: true };
+    const plan = planDay([session('10:30', '12:30'), lunch, session('13:15', '14:45')], DAY, 'up-for-it');
+    expect(plan.breaks.some((b) => b.kind === 'meal')).toBe(false);
+    expect(plan.headsUps).not.toContainEqual({ kind: 'no-lunch' });
+    // A meetup that isn't a meal still leaves the heads-up.
+    const coffee: Busy = { ...lunch, meal: false };
+    expect(planDay([session('10:30', '12:30'), coffee, session('13:15', '14:45')], DAY, 'up-for-it').headsUps).toContainEqual({ kind: 'no-lunch' });
+  });
+
+  it('busyFrom marks meal invites only', () => {
+    const base = { title: 'x', source: 'invite' as const, start: t('12:00'), end: t('13:00') };
+    const busy = busyFrom(
+      [
+        { ...base, id: 'a', type: 'invite', inviteId: 'meal1' },
+        { ...base, id: 'b', type: 'invite', inviteId: 'sit1' },
+        { ...base, id: 'c', type: 'catch-up' },
+      ],
+      new Set(['meal1']),
+    );
+    expect(busy.map((b) => [b.id, b.kind, !!b.meal])).toEqual([
+      ['a', 'meetup', true],
+      ['b', 'meetup', false],
+    ]);
   });
 
   it('flags a long stretch sooner when energy is steady, and suggests a recharge that fits', () => {

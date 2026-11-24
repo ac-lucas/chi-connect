@@ -1,10 +1,10 @@
 // Today's energy (F22): a one-line summary with Change, or the three choices.
 // Arrow keys move through radios and select as they go (WCAG 3.2.2): each pick is saved but the choices stay open;
 // Done closes them. The screen reader reads each option as it's reached, so picks aren't announced.
-import { useRef, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { EnergyLevel } from '../../model/types';
 import { ENERGY, ENERGY_ORDER } from '../../schedule/energy';
-import { setSetting } from '../../storage/db';
+import { getSetting, setSetting } from '../../storage/db';
 import { announce } from '../../ui/announce';
 
 function greeting(hour: number): string {
@@ -18,6 +18,11 @@ export function EnergyPicker({ level, setToday, name, now }: { level: EnergyLeve
   const [changing, setChanging] = useState(false);
   const changeBtn = useRef<HTMLButtonElement>(null);
   const group = useRef<HTMLFieldSetElement>(null);
+  /** The one-line descriptions show until the first Done; after that a word and an icon are enough. */
+  const [explained, setExplained] = useState(true);
+  useEffect(() => {
+    void getSetting('energyExplained').then((e) => setExplained(!!e));
+  }, []);
 
   async function choose(l: EnergyLevel) {
     setChanging(true);
@@ -26,6 +31,7 @@ export function EnergyPicker({ level, setToday, name, now }: { level: EnergyLeve
   async function done() {
     // On first open nothing is saved yet: Done confirms what's selected (the default), no need to pick twice.
     if (!setToday) await setSetting('energy', { level, setAt: Date.now() });
+    if (!explained) void setSetting('energyExplained', true);
     setChanging(false);
     setTimeout(() => changeBtn.current?.focus(), 0); // keep focus where the choices were
     announce(`Energy: ${ENERGY[level].label}. Your day’s been updated.`);
@@ -59,7 +65,7 @@ export function EnergyPicker({ level, setToday, name, now }: { level: EnergyLeve
               {ENERGY[l].glyph}
             </span>
             <span class="energy-label">{ENERGY[l].label}</span>
-            <span class="energy-line">{ENERGY[l].line}</span>
+            {!explained && <span class="energy-line">{ENERGY[l].line}</span>}
           </label>
         ))}
       </div>

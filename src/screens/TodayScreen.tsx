@@ -5,16 +5,16 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Invite, ScheduleItem } from '../model/types';
 import { clockTime as clock, dayLabel, nextDay, programDays, startOfDay, timeRangeSpoken } from '../program/program';
 import type { Program } from '../program/types';
-import { planDay, type Busy, type PlannedBreak } from '../schedule/breaks';
+import { busyFrom, planDay, type PlannedBreak } from '../schedule/breaks';
 import { energyToday } from '../schedule/energy';
 import { holdsInvites, inviteTitle } from '../schedule/invites';
 import type { Transport } from '../relay/transport';
-import { dismiss, putScheduleItem } from '../storage/db';
+import { dismiss, getSetting, putScheduleItem, setSetting } from '../storage/db';
 import { announce } from '../ui/announce';
 import { useClock } from '../ui/useClock';
 import { useScreenHeading } from '../ui/useScreenHeading';
 import type { InviteDraft } from './InviteScreen';
-import { InvitesPanel, SimulateInvite } from './InvitesPanel';
+import { InvitesPanel, SimulateInvite, simulateFrom } from './InvitesPanel';
 import { ProgramNote } from './ProgramNote';
 import { DoodleBadge, MeetupDoodleView, myDoodleOf } from './DoodleCard';
 import { SuggestionsPanel } from './SuggestionsPanel';
@@ -48,7 +48,7 @@ const TIDY_EVERY_MS = 3 * 60_000;
 export function TodayScreen({ name, program, relay, myTopics, onAddSessions, onInvite, day: shownDay, onDayChange, highlight, onHighlightShown, onRecap }: Props) {
   const heading = useScreenHeading<HTMLHeadingElement>();
   const now = useClock(30_000);
-  const { items, energy, skipped, invites, incoming, connections, hiddenPrompts, quiet } = useTodayData(Math.floor(now / TIDY_EVERY_MS));
+  const { items, energy, skipped, invites, incoming, connections, hiddenPrompts } = useTodayData(Math.floor(now / TIDY_EVERY_MS));
 
   const days = useMemo(() => programDays(program), [program]);
   const today = startOfDay(now);
@@ -71,11 +71,9 @@ export function TodayScreen({ name, program, relay, myTopics, onAddSessions, onI
   const dayLevel = day === today ? level : 'up-for-it';
   const dayItems = useMemo(() => items.filter((i) => i.start >= day && i.start < nextDay(day)), [items, day]);
   const plan = useMemo(() => {
-    const busy: Busy[] = dayItems
-      .filter((i) => i.type === 'session' || i.type === 'protected' || i.type === 'invite')
-      .map((i) => ({ id: i.id, start: i.start, end: i.end, kind: i.type === 'session' ? 'session' : i.type === 'protected' ? 'protected' : 'meetup' }));
-    return planDay(busy, day, dayLevel, undefined, new Set(skipped));
-  }, [dayItems, day, dayLevel, skipped]);
+    const mealInvites = new Set(invites.filter((i) => i.kind === 'meal').map((i) => i.id));
+    return planDay(busyFrom(dayItems, mealInvites), day, dayLevel, undefined, new Set(skipped));
+  }, [dayItems, day, dayLevel, skipped, invites]);
   const invitesById = useMemo(() => new Map(invites.map((i) => [i.id, i])), [invites]);
   const rows = useMemo(() => buildRows(dayItems, plan.breaks, invitesById), [dayItems, plan, invitesById]);
   const namesById = useMemo(() => new Map(connections.map((c) => [c.id, c.profile.displayName])), [connections]);
@@ -96,11 +94,29 @@ export function TodayScreen({ name, program, relay, myTopics, onAddSessions, onI
           )
       : undefined;
 
+  // First run: a lunch invite from Mina is already waiting, so the drawings are three taps away for someone trying
+  // the app alone. Once per phone; skipped if the demo people were removed.
+  const welcomeFrom = connections.find((c) => c.demo && c.state === 'connected' && c.id === 'demo-mina') ?? connections.find((c) => c.demo && c.state === 'connected');
+  const lunchLater = day === today ? plan.breaks.find((b) => b.kind === 'meal' && b.start > now + 5 * 60_000) : undefined;
+  useEffect(() => {
+    if (!welcomeFrom || day !== today) return;
+    let gone = false;
+    void (async () => {
+      if (await getSetting('welcomeInviteSent')) return;
+      await setSetting('welcomeInviteSent', true); // first, so a second render can't send two
+      if (gone) return;
+      await simulateFrom(welcomeFrom, lunchLater ?? nextBreak, lunchLater ? true : undefined);
+    })().catch(() => {});
+    return () => {
+      gone = true;
+    };
+  }, [welcomeFrom?.id, day === today]);
+
   function inviteFromBreak(b: PlannedBreak) {
     onInvite({ kinds: b.kind === 'meal' ? ['meal', 'break-together'] : ['break-together', 'meal'], start: b.start, end: b.end });
   }
   function inviteFromSession(s: ScheduleItem, preselect?: string[]) {
-    onInvite({ kinds: ['sit-together', 'arrive-together', 'walk-over'], start: s.start, end: s.end, sessionId: s.programSessionId, sessionTitle: s.title, room: s.place, preselect });
+    onInvite({ kinds: ['sit-together', 'walk-over'], start: s.start, end: s.end, sessionId: s.programSessionId, sessionTitle: s.title, room: s.place, preselect });
   }
   // On a session with sitting together merged in: your own meetup gets more people (same invite, same doodles);
   // one you were invited to can't be changed by you, so that starts a new invite as usual.
@@ -261,7 +277,6 @@ export function TodayScreen({ name, program, relay, myTopics, onAddSessions, onI
                 onInviteMore={inviteMore}
                 onShowShape={(inv, context) => setShapeFor({ id: inv.id, context })}
                 highlighted={!!highlight && meetupOf(r)?.invite?.id === highlight}
-                quiet={quiet}
                 clashWith={
                   r.kind === 'protected' ? dayItems.find((i) => i.type === 'session' && i.start < r.item.end && i.end > r.item.start)?.title : undefined
                 }

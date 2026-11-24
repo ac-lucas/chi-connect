@@ -320,3 +320,15 @@ export const drawingOf = (name: string) => `${name}’s drawing`;
 
 /** A scribble for someone who skips drawing: made fresh, then sent like a real one. */
 export const skipDoodle = (): Doodle => generateDoodle(crypto.getRandomValues(new Uint32Array(2)).join('-'));
+
+/**
+ * The drawing two people check when connecting face to face: made from a seed both phones share, so both show the
+ * same one. `word` names it ("Blue: star and moon") so it can be read out and compared without looking.
+ */
+export function matchDrawing(seed: string): { doodle: Doodle; color: (typeof CARD_COLORS)[number]; word: string } {
+  const s = `pebble-connect-v2:${seed}`;
+  const names = doodleRecipe(s).shapes;
+  const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0]!;
+  const color = doodleColor(s);
+  return { doodle: generateDoodle(s), color, word: `${color.name}: ${list}` };
+}

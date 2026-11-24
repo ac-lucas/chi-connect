@@ -154,7 +154,7 @@ export function PersonScreen({ connection: c, myTags, justConnected, relay, prog
       {c.state === 'pending-sent' && (
         <section class="card stack" aria-labelledby="waiting-heading">
           <h3 id="waiting-heading">Waiting to hear back</h3>
-          <p>They’ll show up as connected once they say yes. If they don’t, you won’t hear anything, and that’s fine.</p>
+          <p>They’ll show up as connected once they say yes. If they don’t, you won’t hear anything.</p>
           <div class="actions">
             <button type="button" class="button secondary" onClick={() => dismiss('Request canceled.')}>
               Cancel request

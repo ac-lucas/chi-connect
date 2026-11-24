@@ -142,22 +142,27 @@ export function InvitesPanel({ invites, connections, items, relay, heldUntil, on
   );
 }
 
+/** An invite from a demo person into the next suggested break (or half an hour from now), with a generated drawing. */
+export async function simulateFrom(from: Connection, nextBreak: PlannedBreak | null, meal?: boolean) {
+  const start = nextBreak ? nextBreak.start : Math.ceil((Date.now() + 30 * 60_000) / (15 * 60_000)) * 15 * 60_000;
+  const end = nextBreak ? nextBreak.end : start + 30 * 60_000;
+  const isMeal = meal ?? nextBreak?.kind === 'meal';
+  await simulateIncoming(from, {
+    kind: isMeal ? 'meal' : 'break-together',
+    start,
+    end,
+    place: isMeal ? 'Lunch hall' : 'Courtyard benches',
+    spot: isMeal ? undefined : { side: 'left', byDoor: true },
+  });
+}
+
 /** A small control so someone trying the app alone can receive an invite from a demo person. */
 export function SimulateInvite({ connections, nextBreak }: { connections: Connection[]; nextBreak: PlannedBreak | null }) {
   const demo = connections.filter((c) => c.demo && c.state === 'connected');
   if (!demo.length) return null;
   async function simulate() {
     const from = demo[Math.floor(Math.random() * demo.length)]!;
-    const start = nextBreak ? nextBreak.start : Math.ceil((Date.now() + 30 * 60_000) / (15 * 60_000)) * 15 * 60_000;
-    const end = nextBreak ? nextBreak.end : start + 30 * 60_000;
-    const meal = nextBreak?.kind === 'meal';
-    await simulateIncoming(from, {
-      kind: meal ? 'meal' : 'break-together',
-      start,
-      end,
-      place: meal ? 'Lunch hall' : 'Courtyard benches',
-      spot: meal ? undefined : { side: 'left', byDoor: true },
-    });
+    await simulateFrom(from, nextBreak);
     announce(`${from.profile.displayName} sent you an invite. It’s at the top of Today.`);
   }
   return (

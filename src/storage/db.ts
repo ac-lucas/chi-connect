@@ -38,6 +38,10 @@ export interface Settings {
   nudgeCounts: Record<string, number>;
   /** Doodle prompts this person has drawn, oldest first, so new invites prefer ones they haven't. */
   usedPrompts: string[];
+  /** The first-run lunch invite from a demo person has been sent (once per phone). */
+  welcomeInviteSent: boolean;
+  /** The energy choices have been explained once; after that they show as a word and an icon. */
+  energyExplained: boolean;
 }
 
 interface PebbleSchema extends DBSchema {

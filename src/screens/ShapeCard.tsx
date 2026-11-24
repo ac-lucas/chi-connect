@@ -1,49 +1,6 @@
 import type { ComponentChildren } from 'preact';
 import { createPortal } from 'preact/compat';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { SHAPE_PATHS, type ShapeCard } from '../schedule/findme';
-
-function Pattern({ kind, color, id }: { kind: ShapeCard['pattern']; color: string; id: string }) {
-  return (
-    <defs>
-      <pattern id={id} width="20" height="20" patternUnits="userSpaceOnUse">
-        {kind === 'Stripes' && <path d="M0 20 L20 0" stroke={color} stroke-width="5" />}
-        {kind === 'Dots' && <circle cx="10" cy="10" r="4" fill={color} />}
-        {kind === 'Waves' && <path d="M0 10 Q5 4 10 10 T20 10" fill="none" stroke={color} stroke-width="3" />}
-        {kind === 'Checks' && <path d="M0 0 H10 V10 H0 Z M10 10 H20 V20 H10 Z" fill={color} />}
-      </pattern>
-    </defs>
-  );
-}
-
-/** The shape itself: filled, patterned and outlined so it reads from across a room. */
-export function ShapeGraphic({ card, size, label, idSuffix }: { card: ShapeCard; size?: string; label?: string; idSuffix: string }) {
-  const { bg, fg } = card.color;
-  const pid = `pat-${idSuffix}`;
-  return (
-    <svg class="shape-graphic" viewBox="-6 -6 212 212" style={size ? { width: size, height: size } : undefined} role={label ? 'img' : undefined} aria-label={label} aria-hidden={label ? undefined : 'true'}>
-      <Pattern kind={card.pattern} color={bg} id={pid} />
-      <path d={SHAPE_PATHS[card.shape]} fill={fg} stroke={fg} stroke-width="10" stroke-linejoin="round" />
-      <path d={SHAPE_PATHS[card.shape]} fill={`url(#${pid})`} />
-    </svg>
-  );
-}
-
-/**
- * Full-screen "Your shape" to hold up. A word, a shape and a pattern, never color alone. A dialog: focus moves in,
- * Escape or Done closes, focus goes back. Keeps the screen awake while it's up, where the browser allows it.
- */
-export function ShapeCardView({ card, context, onClose }: { card: ShapeCard; context?: string; onClose: () => void }) {
-  return (
-    <HoldUpDialog bg={card.color.bg} fg={card.color.fg} lead="Hold this up. Look for the same shape." context={context} onClose={onClose}>
-      <ShapeGraphic card={card} label={`${card.word} with ${card.pattern.toLowerCase()}`} idSuffix="full" />
-      <h2 id="findme-word" class="findme-word">
-        {card.word}
-      </h2>
-      <p class="findme-pattern">{card.pattern}</p>
-    </HoldUpDialog>
-  );
-}
 
 /**
  * The full-screen shell for anything you hold up to find someone (a shape, a doodle). Its children must include
@@ -56,11 +13,17 @@ export function HoldUpDialog({
   srHint,
   context,
   onClose,
+  art,
+  actions,
   children,
 }: {
   bg: string;
   fg: string;
-  lead: string;
+  /** Shown first, at the top, as big as the screen allows (the drawing). The words follow it. */
+  art?: ComponentChildren;
+  /** Small buttons shown in one row with Done. */
+  actions?: ComponentChildren;
+  lead: ComponentChildren;
   /** Read out to screen reader users only, after the lead (for example "You don't need to look: Mina will find you."). */
   srHint?: string;
   context?: string;
@@ -133,10 +96,12 @@ export function HoldUpDialog({
 
   // Rendered straight into <body>, outside #app, so making the app inert doesn't make the card inert too.
   return createPortal(
-    <div class="findme" role="dialog" aria-modal="true" aria-labelledby="findme-word" aria-describedby="findme-lead" style={{ background: bg, color: fg, '--findme-fg': fg }}>
+    <div class={`findme${art ? ' art-first' : ''}`} role="dialog" aria-modal="true" aria-labelledby="findme-word" aria-describedby="findme-lead" style={{ background: bg, color: fg, '--findme-fg': fg }}>
       <button type="button" ref={close} class="findme-close" aria-label="Close" style={{ color: fg, borderColor: fg }} onClick={onClose}>
         <span aria-hidden="true">✕</span>
       </button>
+      {art}
+      {art && children}
       <p id="findme-lead" class="findme-lead">
         {lead}
         {/* Screen reader users often keep the display off (VoiceOver calls it Screen Curtain; other readers: verify).
@@ -146,10 +111,13 @@ export function HoldUpDialog({
         </span>
       </p>
       {context && <p class="findme-context">{context}</p>}
-      {children}
-      <button type="button" ref={done} class="findme-done" style={{ color: bg, background: fg }} onClick={onClose}>
-        Done
-      </button>
+      {!art && children}
+      <div class="findme-actions">
+        {actions}
+        <button type="button" ref={done} class="findme-done" style={{ color: bg, background: fg }} onClick={onClose}>
+          Done
+        </button>
+      </div>
       <p class="findme-brand">Pebble</p>
     </div>,
     document.body,

@@ -75,23 +75,20 @@ export function MeScreen({ profile, onEdit, onCatchUp, onRecap, program }: Props
         </button>
       </div>
 
-      <section class="stack" aria-labelledby="me-week">
-        <h3 id="me-week">Your week</h3>
-        <div class="actions">
-          <button type="button" class="button secondary" onClick={onRecap}>
-            Your week and follow-ups
-          </button>
-          <button type="button" class="button secondary" onClick={onCatchUp}>
-            Catch up later{catchUp ? ` (${catchUp})` : ''}
-          </button>
-        </div>
-      </section>
+      <div class="actions">
+        <button type="button" class="button quiet" onClick={onRecap}>
+          Your week and follow-ups
+        </button>
+        <button type="button" class="button quiet" onClick={onCatchUp}>
+          Catch up later{catchUp ? ` (${catchUp})` : ''}
+        </button>
+      </div>
 
       <section class="stack" aria-labelledby="me-suggestions">
         <h3 id="me-suggestions">Suggestions</h3>
         <label class="check">
           <input type="checkbox" checked={quiet} onChange={(e) => void toggleQuiet(e.currentTarget.checked)} />
-          <span>Pause suggestions (wildcards and conversation starters). Invites from people still arrive.</span>
+          <span>Pause suggestions. Invites still come through.</span>
         </label>
         {snoozed && (
           <p>
@@ -101,7 +98,6 @@ export function MeScreen({ profile, onEdit, onCatchUp, onRecap, program }: Props
             </button>
           </p>
         )}
-        <p class="hint">How many you get follows today’s energy: fewer when Steady, more when Charged.</p>
       </section>
 
       <section class="stack" aria-labelledby="me-data">

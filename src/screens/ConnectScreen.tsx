@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { CloseButton } from '../ui/CloseButton';
 import { hasWebCrypto, matchSeed, newPairKey, pairSecret, type PairKey } from '../connect/pairing';
-import { cardFromSeed, type ShapeCard } from '../schedule/findme';
-import { ShapeCardView, ShapeGraphic } from './ShapeCard';
+import { matchDrawing } from '../schedule/doodle';
+import { HoldUpDialog } from './ShapeCard';
+import { DoodleGraphic, DoodleReplay } from './DoodleCard';
 import { decodeCode, DecodeError, FACE_TO_FACE_TTL_MS, fitLink, type ConnectPayload, type DecodeProblem } from '../connect/payload';
 import { QrCode } from '../connect/QrCode';
 import { QrScanner } from '../connect/QrScanner';
@@ -64,7 +65,7 @@ export function ConnectScreen({ profile, relay, initialCode, onOneWayCode, onCon
   const [mine, setMine] = useState<Mine | null>(null);
   const [view, setView] = useState<'show' | 'scan'>('show');
   const [theirs, setTheirs] = useState<ConnectPayload | null>(null);
-  const [match, setMatch] = useState<ShapeCard | null>(null);
+  const [match, setMatch] = useState<ReturnType<typeof matchDrawing> | null>(null);
   const [showShape, setShowShape] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [pasted, setPasted] = useState('');
@@ -138,7 +139,7 @@ export function ConnectScreen({ profile, relay, initialCode, onOneWayCode, onCon
       lastBad.current = null;
       setProblem(null);
       setTheirs(p);
-      setMatch(await cardFromSeed(matchSeed(mine.payload, p)));
+      setMatch(matchDrawing(matchSeed(mine.payload, p)));
       // Focusing the heading reads it ("Got X's code"); no separate announcement, or it would be read twice.
       setTimeout(() => resultHeading.current?.focus(), 0);
       return true;
@@ -243,7 +244,7 @@ export function ConnectScreen({ profile, relay, initialCode, onOneWayCode, onCon
         </h2>
         {!theirs && (
           <p>
-            You scan theirs, they scan yours. Order doesn’t matter. Then you both hold up your shape: same shape, you’re connected.
+            You scan theirs, they scan yours. Then check you both got the same drawing.
           </p>
         )}
       </div>
@@ -265,15 +266,12 @@ export function ConnectScreen({ profile, relay, initialCode, onOneWayCode, onCon
           </section>
 
           <section class="card stack match" aria-labelledby="match-heading">
-            <h3 id="match-heading">Your shape</h3>
+            <h3 id="match-heading">Check the drawing</h3>
             <div class="match-card" style={{ background: match.color.bg, color: match.color.fg }}>
-              <ShapeGraphic card={match} size="5rem" idSuffix="match" />
-              <p class="match-word">{match.word}</p>
-              <p class="match-pattern">{match.pattern}</p>
+              <DoodleGraphic doodle={match.doodle} size="7rem" />
+              <p class="match-pattern">{match.word}</p>
             </div>
-            <p>
-              Once they’ve scanned your code too, their screen shows the same shape. Hold them side by side: same shape? You’re connected.
-            </p>
+            <p>Once they’ve scanned yours, their screen shows a drawing too. Same one? You’re connected.</p>
             <div class="actions">
               <button type="button" class="button secondary" onClick={() => setShowShape(true)}>
                 Show it full screen
@@ -281,14 +279,26 @@ export function ConnectScreen({ profile, relay, initialCode, onOneWayCode, onCon
             </div>
             <div class="actions">
               <button type="button" class="button" onClick={connect} disabled={saving}>
-                {saving ? 'Connecting…' : 'Same shape. Connect'}
+                {saving ? 'Connecting…' : 'Same drawing. Connect'}
               </button>
               <button type="button" class="button secondary" onClick={() => void keepingFocus(startOver)}>
-                Different shape
+                Different drawing
               </button>
             </div>
           </section>
-          {showShape && <ShapeCardView card={match} context={`Connecting with ${theirs.profile.displayName}`} onClose={() => setShowShape(false)} />}
+          {showShape && (
+            <HoldUpDialog
+              bg={match.color.bg}
+              fg={match.color.fg}
+              lead="Hold it next to theirs. Same one?"
+              onClose={() => setShowShape(false)}
+              art={<DoodleReplay items={[{ doodle: match.doodle, label: match.word }]} fg={match.color.fg} bg={match.color.bg} />}
+            >
+              <h2 id="findme-word" class="findme-word doodle-title">
+                {match.word}
+              </h2>
+            </HoldUpDialog>
+          )}
 
           <section class="stack" aria-labelledby="still-show">
             <h3 id="still-show">Haven’t been scanned yet?</h3>

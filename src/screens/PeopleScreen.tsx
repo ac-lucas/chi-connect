@@ -72,7 +72,7 @@ export function PeopleScreen({ connections, myTags, onConnect, onOpen, onShare, 
 
       {real.length === 0 ? (
         <div class="card stack">
-          <p class="lede">Nobody here yet. That’s fine.</p>
+          <p class="lede">Nobody here yet.</p>
           <p>Meet someone, swap codes, and they show up here with the topics you share.</p>
         </div>
       ) : (

@@ -73,10 +73,7 @@ export function ProfileEditor({ initial, mode, onSave, onCancel }: Props) {
           {mode === 'create' ? 'Hi. Let’s set you up.' : 'Edit your profile'}
         </h2>
         {mode === 'create' && (
-          <p class="lede">
-            Takes a minute. Only your name is required. Your profile lives on this phone, and the people you connect
-            with get only the parts you choose to share.
-          </p>
+          <p class="lede">Only your name is required. It stays on this phone.</p>
         )}
       </div>
 
@@ -141,15 +138,7 @@ export function ProfileEditor({ initial, mode, onSave, onCancel }: Props) {
 
       <fieldset class="stack">
         <legend>Links (optional)</legend>
-        <p class="hint">A website, portfolio or social profile. Up to {LIMITS.links}.</p>
-        <p class="hint">
-          {/* linkedin.com/in/me/ is meant to open the signed-in person's own profile (verify). It's a plain link:
-              nothing is sent to LinkedIn by this app, and the app never signs in anywhere. */}
-          <a href="https://www.linkedin.com/in/me/" target="_blank" rel="noopener noreferrer">
-            Open your LinkedIn profile<span class="visually-hidden"> (opens in a new tab)</span>
-          </a>
-          , copy its address, then paste it below.
-        </p>
+        <p class="hint">A website, portfolio or LinkedIn. Up to {LIMITS.links}.</p>
         {draft.links.map((link, i) => (
           <div class="field" key={i}>
             <label for={`link${i}`}>Link {i + 1}</label>

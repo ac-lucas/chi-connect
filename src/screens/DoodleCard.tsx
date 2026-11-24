@@ -287,9 +287,10 @@ export function DoodleReplay({ items, fg, bg }: { items: { doodle: Doodle; label
 
 /**
  * Full screen at a meetup. Guests hold up the sender's doodle; the sender holds up each guest's doodle in turn.
- * Everyone looks for their own. "Show mine instead" swaps to your own (the others saw it on the invite).
+ * Everyone looks for their own. The drawing takes the screen; one line under it says whose it is and shows yours
+ * small. "Show mine instead" swaps to your own (the others saw it on the invite).
  */
-export function MeetupDoodleView({ invite, people, context, onClose }: { invite: Invite; people: Connection[]; context?: string; onClose: () => void }) {
+export function MeetupDoodleView({ invite, people, onClose }: { invite: Invite; people: Connection[]; context?: string; onClose: () => void }) {
   const [mine, setMine] = useState(false);
   const c = doodleColor(invite.id);
   const own = myDoodleOf(invite);
@@ -303,36 +304,37 @@ export function MeetupDoodleView({ invite, people, context, onClose }: { invite:
   const showMine = mine || waiting;
   const items = showMine ? [{ doodle: own, label: 'Your drawing' }] : theirs;
   const title = showMine ? 'Your drawing' : invite.outgoing ? (theirs.length === 1 ? theirs[0]!.label : 'Their drawings') : theirs[0]!.label;
-  const lead = waiting
-    ? 'Nobody’s said yes yet. Hold this up: they saw it on the invite.'
-    : mine
-      ? 'Hold this up. They saw it on the invite.'
-      : invite.outgoing
-      ? theirs.length > 1
-        ? 'Hold this up. Each of them is looking for their own.'
-        : 'Hold this up. They’re holding up yours.'
-      : `Hold this up. ${invite.senderName} is holding up yours.`;
+  const holder = !invite.outgoing ? invite.senderName : theirs.length > 1 ? 'They’re all' : 'They’re';
+  const lead = showMine ? (
+    waiting ? 'No yeses yet. They saw this on the invite.' : 'They saw this on the invite.'
+  ) : (
+    <>
+      {invite.outgoing ? holder : `${holder} is`} holding up yours
+      <DoodleGraphic doodle={own} size="2.25rem" />
+    </>
+  );
   // Whoever can see does the finding: the person holding this up never has to look for anything.
   const srHint = !invite.outgoing && !showMine ? `You don’t need to look: ${invite.senderName} will find you.` : 'You don’t need to look: they’ll find you.';
 
   return (
-    <HoldUpDialog bg={c.bg} fg={c.fg} lead={lead} srHint={srHint} context={context} onClose={onClose}>
+    <HoldUpDialog
+      bg={c.bg}
+      fg={c.fg}
+      lead={lead}
+      srHint={srHint}
+      onClose={onClose}
+      art={<DoodleReplay key={showMine ? 'mine' : 'theirs'} items={items} fg={c.fg} bg={c.bg} />}
+      actions={
+        !waiting && (
+          <button type="button" class="findme-small" style={{ color: c.fg, borderColor: c.fg }} onClick={() => setMine((m) => !m)}>
+            {mine ? 'Show theirs' : 'Show mine instead'}
+          </button>
+        )
+      }
+    >
       <h2 id="findme-word" class="findme-word doodle-title">
         {title}
       </h2>
-      <DoodleReplay key={showMine ? 'mine' : 'theirs'} items={items} fg={c.fg} bg={c.bg} />
-      <p class="findme-pattern doodle-prompt-line">Everyone draws: {promptText(invite.prompt)}</p>
-      {!showMine && (
-        <p class="doodle-look">
-          Look for yours
-          <DoodleGraphic doodle={own} size="2.5rem" />
-        </p>
-      )}
-      {!waiting && (
-        <button type="button" class="findme-small" style={{ color: c.fg, borderColor: c.fg }} onClick={() => setMine((m) => !m)}>
-          {mine ? 'Show theirs' : 'Show mine instead'}
-        </button>
-      )}
     </HoldUpDialog>
   );
 }

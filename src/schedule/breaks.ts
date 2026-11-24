@@ -1,6 +1,6 @@
 // Auto-breaks (F11): fill the gaps between what's in someone's day with a lunch break and breathers,
 // shaped by today's energy (F22), and give a friendly heads-up on a packed day. Pure: no storage, no clock.
-import type { EnergyLevel } from '../model/types';
+import type { EnergyLevel, ScheduleItem } from '../model/types';
 import { atMinutes } from '../program/program';
 import { ENERGY } from './energy';
 
@@ -9,6 +9,21 @@ export interface Busy {
   start: number;
   end: number;
   kind: 'session' | 'protected' | 'meetup';
+  /** A meetup that is a meal (lunch with someone): it counts as the day's lunch. */
+  meal?: boolean;
+}
+
+/** Turn the day's schedule items into busy time. `mealInvites` holds the ids of invites that are meals. */
+export function busyFrom(items: readonly ScheduleItem[], mealInvites: ReadonlySet<string>): Busy[] {
+  return items
+    .filter((i) => i.type === 'session' || i.type === 'protected' || i.type === 'invite')
+    .map((i) => ({
+      id: i.id,
+      start: i.start,
+      end: i.end,
+      kind: i.type === 'session' ? 'session' : i.type === 'protected' ? 'protected' : 'meetup',
+      ...(i.type === 'invite' && i.inviteId && mealInvites.has(i.inviteId) ? { meal: true } : {}),
+    }));
 }
 
 export interface BreakPrefs {
@@ -87,7 +102,8 @@ export function planDay(
   const mealFrom = atMinutes(dayStart, prefs.mealFrom);
   const mealTo = atMinutes(dayStart, prefs.mealTo);
   const half = (prefs.buffer / 2) * MIN;
-  let mealPlaced = false;
+  // Lunch with someone already covers lunch: no suggested lunch and no heads-up.
+  let mealPlaced = items.some((b) => b.meal && b.start < mealTo && b.end > mealFrom);
 
   for (let i = 0; i + 1 < blocks.length; i++) {
     const s = blocks[i]!.end + half;

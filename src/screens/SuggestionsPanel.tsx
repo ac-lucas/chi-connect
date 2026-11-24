@@ -226,7 +226,7 @@ export function SuggestionsPanel({ program, items, connections, level, breaks, d
               class="button secondary"
               onClick={() =>
                 onInvite({
-                  kinds: ['sit-together', 'arrive-together', 'walk-over'],
+                  kinds: ['sit-together', 'walk-over'],
                   start: wildcard!.session.start,
                   end: wildcard!.session.end,
                   sessionId: wildcard!.session.id,
